@@ -2,7 +2,9 @@ package io.github.toolcanvas.client;
 
 import com.mojang.blaze3d.platform.NativeImage;
 import com.mojang.blaze3d.systems.RenderSystem;
+import io.github.toolcanvas.CanvasDesign;
 import io.github.toolcanvas.DesignData;
+import io.github.toolcanvas.ModRegistry;
 import io.github.toolcanvas.ToolCanvas;
 import io.github.toolcanvas.client.model.DesignBakedModel;
 import io.github.toolcanvas.client.model.DesignQuads;
@@ -16,6 +18,7 @@ import net.minecraft.client.renderer.texture.DynamicTexture;
 import net.minecraft.client.resources.model.BakedModel;
 import net.minecraft.client.resources.model.ModelResourceLocation;
 import net.minecraft.resources.ResourceLocation;
+import net.minecraft.world.item.ItemStack;
 import net.neoforged.neoforge.network.PacketDistributor;
 import org.jetbrains.annotations.Nullable;
 
@@ -72,6 +75,18 @@ public final class ClientDesigns {
         ItemTransforms transforms = base.isGui3d() || base.isCustomRenderer() ? defaultHandheld() : base.getTransforms();
         return entry.models.computeIfAbsent(transforms,
                 t -> new DesignBakedModel(entry.quads, t, base.getParticleIcon(), entry.texture));
+    }
+
+    /**
+     * Used right before an item is drawn: if the stack carries a design but some other code swapped in a
+     * different model (e.g. a mod's separate in-hand model), returns the design model built on that model.
+     */
+    public static BakedModel designModelFor(ItemStack stack, BakedModel model) {
+        if (model instanceof DesignBakedModel) return model;
+        CanvasDesign design = stack.get(ModRegistry.DESIGN.get());
+        if (design == null) return model;
+        BakedModel custom = model(design.id(), model);
+        return custom != null ? custom : model;
     }
 
     private static ResourceLocation upload(long id, DesignData data) {

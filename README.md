@@ -12,6 +12,8 @@ Repaint any tool or melee weapon, vanilla or modded, **one item at a time**, in-
    ```
 2. Put a tool in the top slot. The canvas loads the tool's current look (custom or original).
 3. Draw. Tools: Pen, Eraser, Fill, Pick, Undo/Redo (Ctrl+Z / Ctrl+Y), Mirror, Grid, Clear, Original.
+   **Upscale** doubles the resolution (16×16 → 32×32 → 64×64) keeping your drawing; Shift+click for a smooth
+   (Scale2x) upscale. **Shrink** halves it.
    Left-click paints, right-click erases, middle-click picks a colour. The top palette row is made of
    the tool's own colours; type any `#RRGGBB` / `#AARRGGBB` in the hex box.
 4. Put **1 repair material** in the payment slot (iron ingot for iron tools, planks for wood, a diamond
@@ -65,6 +67,8 @@ To test in a dev client: `gradlew runClient`.
 - Add extras with the item tag `toolcanvas:customizable` (damageable items only) and exclude items with
   `toolcanvas:blacklist` (via a datapack or KubeJS). The trident is excluded by default because vanilla
   hard-codes its rendering.
+- Weapons that use a separate in-hand model (like the trident trick many weapon mods use) still show the
+  design in hand: a small client mixin puts the design model back right before the item is drawn.
 - Weapons with 3D models become a flat sprite while they carry a design, posed like a vanilla sword.
   Reset brings the 3D model back.
 - Bows, crossbows, shields and fishing rods are excluded on purpose: their pull/block/cast animations are

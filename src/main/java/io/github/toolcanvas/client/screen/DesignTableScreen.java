@@ -79,7 +79,7 @@ public class DesignTableScreen extends AbstractContainerScreen<DesignTableMenu> 
 
     // Widgets
     private EditBox hexBox;
-    private Button applyButton, resetButton, undoButton, redoButton, gridButton, mirrorButton;
+    private Button applyButton, resetButton, undoButton, redoButton, gridButton, mirrorButton, upscaleButton, shrinkButton;
     private final Map<Tool, Button> toolButtons = new HashMap<>();
     private boolean updatingHex;
 
@@ -135,10 +135,16 @@ public class DesignTableScreen extends AbstractContainerScreen<DesignTableMenu> 
                 .bounds(x + CANVAS_X + 120, y + 189, 39, 16)
                 .tooltip(Tooltip.create(Component.translatable("gui.toolcanvas.mirror.tooltip"))).build());
         addRenderableWidget(Button.builder(Component.translatable("gui.toolcanvas.clear"), b -> clearCanvas())
-                .bounds(x + CANVAS_X, y + 207, 79, 16).build());
+                .bounds(x + CANVAS_X, y + 207, 39, 16).build());
         addRenderableWidget(Button.builder(Component.translatable("gui.toolcanvas.original"), b -> loadOriginal())
-                .bounds(x + CANVAS_X + 80, y + 207, 79, 16)
+                .bounds(x + CANVAS_X + 40, y + 207, 39, 16)
                 .tooltip(Tooltip.create(Component.translatable("gui.toolcanvas.original.tooltip"))).build());
+        shrinkButton = addRenderableWidget(Button.builder(Component.translatable("gui.toolcanvas.shrink"), b -> shrink())
+                .bounds(x + CANVAS_X + 80, y + 207, 39, 16)
+                .tooltip(Tooltip.create(Component.translatable("gui.toolcanvas.shrink.tooltip"))).build());
+        upscaleButton = addRenderableWidget(Button.builder(Component.translatable("gui.toolcanvas.upscale"), b -> upscale(hasShiftDown()))
+                .bounds(x + CANVAS_X + 120, y + 207, 39, 16)
+                .tooltip(Tooltip.create(Component.translatable("gui.toolcanvas.upscale.tooltip"))).build());
 
         setColor(color);
         updateButtons();
@@ -265,6 +271,75 @@ public class DesignTableScreen extends AbstractContainerScreen<DesignTableMenu> 
         edited = true;
     }
 
+    /** Doubles the resolution. Sharp: every pixel becomes 2x2. Smooth: Scale2x, which rounds off diagonal edges. */
+    private void upscale(boolean smooth) {
+        if (pixels == null || !canUpscale()) return;
+        pushUndo();
+        int nw = cw * 2, nh = ch * 2;
+        int[] out = new int[nw * nh];
+        for (int y = 0; y < ch; y++) {
+            for (int x = 0; x < cw; x++) {
+                int p = pixels[y * cw + x];
+                int e0 = p, e1 = p, e2 = p, e3 = p;
+                if (smooth) {
+                    int a = y > 0 ? pixels[(y - 1) * cw + x] : p;      // above
+                    int b = x < cw - 1 ? pixels[y * cw + x + 1] : p;   // right
+                    int c = x > 0 ? pixels[y * cw + x - 1] : p;        // left
+                    int d = y < ch - 1 ? pixels[(y + 1) * cw + x] : p; // below
+                    if (c == a && c != d && a != b) e0 = a;
+                    if (a == b && a != c && b != d) e1 = b;
+                    if (d == c && d != b && c != a) e2 = c;
+                    if (b == d && b != a && d != c) e3 = d;
+                }
+                out[(2 * y) * nw + 2 * x] = e0;
+                out[(2 * y) * nw + 2 * x + 1] = e1;
+                out[(2 * y + 1) * nw + 2 * x] = e2;
+                out[(2 * y + 1) * nw + 2 * x + 1] = e3;
+            }
+        }
+        pixels = out;
+        cw = nw;
+        ch = nh;
+        edited = true;
+    }
+
+    /** Halves the resolution; each 2x2 block becomes its most common colour. */
+    private void shrink() {
+        if (pixels == null || !canShrink()) return;
+        pushUndo();
+        int nw = cw / 2, nh = ch / 2;
+        int[] out = new int[nw * nh];
+        for (int y = 0; y < nh; y++) {
+            for (int x = 0; x < nw; x++) {
+                int[] block = {
+                        pixels[(2 * y) * cw + 2 * x], pixels[(2 * y) * cw + 2 * x + 1],
+                        pixels[(2 * y + 1) * cw + 2 * x], pixels[(2 * y + 1) * cw + 2 * x + 1]};
+                int best = block[0], bestCount = 0;
+                for (int candidate : block) {
+                    int count = 0;
+                    for (int other : block) if (other == candidate) count++;
+                    if (count > bestCount) {
+                        best = candidate;
+                        bestCount = count;
+                    }
+                }
+                out[y * nw + x] = best;
+            }
+        }
+        pixels = out;
+        cw = nw;
+        ch = nh;
+        edited = true;
+    }
+
+    private boolean canUpscale() {
+        return pixels != null && Math.max(cw, ch) * 2 <= Math.min(CanvasConfig.maxCanvasSize(), DesignData.HARD_MAX);
+    }
+
+    private boolean canShrink() {
+        return pixels != null && cw % 2 == 0 && ch % 2 == 0 && Math.min(cw, ch) >= 8;
+    }
+
     private void pushUndo() {
         if (pixels == null) return;
         undo.push(new Snapshot(cw, ch, pixels.clone()));
@@ -299,6 +374,8 @@ public class DesignTableScreen extends AbstractContainerScreen<DesignTableMenu> 
         applyButton.setTooltip(Tooltip.create(applyTooltip(dirty)));
         resetButton.active = loadedDesign != 0;
         undoButton.active = !undo.isEmpty();
+        upscaleButton.active = canUpscale();
+        shrinkButton.active = canShrink();
         redoButton.active = !redo.isEmpty();
         gridButton.setMessage(Component.translatable(grid ? "gui.toolcanvas.grid.on" : "gui.toolcanvas.grid"));
         mirrorButton.setMessage(Component.translatable(mirror ? "gui.toolcanvas.mirror.on" : "gui.toolcanvas.mirror"));
@@ -613,6 +690,10 @@ public class DesignTableScreen extends AbstractContainerScreen<DesignTableMenu> 
     protected void renderLabels(GuiGraphics g, int mx, int my) {
         g.drawString(font, title, titleLabelX, titleLabelY, 0x404040, false);
         g.drawString(font, playerInventoryTitle, inventoryLabelX, inventoryLabelY, 0x404040, false);
+        if (pixels != null) {
+            String size = cw + "×" + ch;
+            g.drawString(font, size, PREVIEW_X + PREVIEW_SIZE / 2 - font.width(size) / 2, PREVIEW_Y + PREVIEW_SIZE + 4, 0x404040, false);
+        }
 
         ItemStack tool = menu.getTool();
         if (tool.isEmpty()) {

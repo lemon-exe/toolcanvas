@@ -3,7 +3,6 @@
   "container.toolcanvas.design_table": "Design Table",
   "tooltip.toolcanvas.custom_design": "Custom design",
   "message.toolcanvas.need_material": "Put the tool's repair material in the payment slot first.",
-
   "gui.toolcanvas.place_tool": "Put a tool in the top slot",
   "gui.toolcanvas.status.empty": "Insert a tool",
   "gui.toolcanvas.status.loading": "Loading design…",
@@ -13,7 +12,6 @@
   "gui.toolcanvas.cost.free": "Cost: free",
   "gui.toolcanvas.cost.ok": "Ready to apply",
   "gui.toolcanvas.cost.wrong": "Wrong material",
-
   "gui.toolcanvas.apply": "Apply",
   "gui.toolcanvas.apply.tooltip": "Repaint this tool with your design. Uses 1 payment item.",
   "gui.toolcanvas.apply.no_tool": "Put a tool in the top slot first.",
@@ -23,11 +21,9 @@
   "gui.toolcanvas.apply.need_material": "Needs 1× %s in the payment slot.",
   "gui.toolcanvas.reset": "Reset",
   "gui.toolcanvas.reset.tooltip": "Put this tool back to its original look. Free.",
-
   "gui.toolcanvas.hex": "Colour (#RRGGBB or #AARRGGBB)",
   "gui.toolcanvas.lighter": "Lighter",
   "gui.toolcanvas.darker": "Darker",
-
   "gui.toolcanvas.tool.pen": "Pen",
   "gui.toolcanvas.tool.pen.tooltip": "Left-click: paint. Right-click: erase. Middle-click: pick a colour.",
   "gui.toolcanvas.tool.eraser": "Eraser",
@@ -46,9 +42,12 @@
   "gui.toolcanvas.clear": "Clear",
   "gui.toolcanvas.original": "Original",
   "gui.toolcanvas.original.tooltip": "Load the tool's original texture onto the canvas (nothing is applied until you press Apply).",
-
   "toolcanvas.configuration.costEnabled": "Applying costs material",
   "toolcanvas.configuration.freeInCreative": "Free in creative",
   "toolcanvas.configuration.fallbackCostItem": "Fallback cost item",
-  "toolcanvas.configuration.maxCanvasSize": "Max canvas size"
+  "toolcanvas.configuration.maxCanvasSize": "Max canvas size",
+  "gui.toolcanvas.shrink": "Shrink",
+  "gui.toolcanvas.shrink.tooltip": "Halve the resolution (e.g. 32×32 → 16×16). Each 2×2 block becomes its most common colour.",
+  "gui.toolcanvas.upscale": "Upscale",
+  "gui.toolcanvas.upscale.tooltip": "Double the resolution (16×16 → 32×32 → 64×64) for finer detail. Your drawing is kept: each pixel becomes 2×2.\nShift+click: smooth upscale (rounds off diagonal edges)."
 }
