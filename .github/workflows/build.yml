@@ -16,16 +16,17 @@ jobs:
           distribution: 'temurin'
       - uses: gradle/actions/setup-gradle@v4
       - run: chmod +x gradlew && ./gradlew build
+      - run: echo "VERSION=$(grep '^mod_version=' gradle.properties | cut -d= -f2)" >> "$GITHUB_ENV"
       - uses: actions/upload-artifact@v4
         with:
           name: toolcanvas-jar
           path: build/libs/*.jar
-      # Publishes the jar as a plain download at /releases/latest (no zip to unpack).
+      # One release per mod version (v1.0.4, ...); the newest is also at /releases/latest.
       - uses: softprops/action-gh-release@v2
         if: github.ref == 'refs/heads/main'
         with:
-          tag_name: latest
-          name: Tool Canvas (latest build)
-          body: Drop the .jar into your mods folder (host and every player). Built from ${{ github.sha }}.
+          tag_name: v${{ env.VERSION }}
+          name: Tool Canvas ${{ env.VERSION }}
+          body: Drop the .jar into your mods folder (host and every player), replacing any older toolcanvas jar. Built from ${{ github.sha }}.
           make_latest: true
           files: build/libs/*.jar

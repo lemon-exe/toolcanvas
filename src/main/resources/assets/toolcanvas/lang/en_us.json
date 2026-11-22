@@ -56,5 +56,5 @@
   "gui.toolcanvas.glint": "Glint",
   "gui.toolcanvas.glint.tooltip": "Set the enchantment glint to your current paint colour.\nShift+click: back to the vanilla glint.\nOnly shows on enchanted tools. Free.",
   "gui.toolcanvas.size": "Size %s%%",
-  "gui.toolcanvas.size.tooltip": "How big the tool looks when held, displayed or dropped (not in inventory slots). Free."
+  "gui.toolcanvas.size.tooltip": "How big the tool looks on displays, in item frames and when dropped. Held and inventory views stay normal size. Free."
 }

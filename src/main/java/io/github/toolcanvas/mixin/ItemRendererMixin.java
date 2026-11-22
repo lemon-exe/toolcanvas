@@ -23,7 +23,7 @@ public abstract class ItemRendererMixin {
      * Many weapon mods (like vanilla's trident) swap in a separate "in hand" model at the start of
      * {@link ItemRenderer#render}, after the normal model lookup already picked the design model.
      * Right before the model is posed we put the design model back, then apply the tool's size setting
-     * (everywhere except inventory slots).
+     * (displays, item frames and dropped items only).
      */
     @WrapOperation(
             method = "render",
@@ -34,7 +34,9 @@ public abstract class ItemRendererMixin {
                                                  boolean leftHand, Operation<BakedModel> original,
                                                  @Local(argsOnly = true) ItemStack stack) {
         BakedModel result = original.call(poseStack, ClientDesigns.designModelFor(stack, model), context, leftHand);
-        if (context != ItemDisplayContext.GUI) {
+        // Size is for showing tools off: displays, item frames, dropped items. Inventory and hands stay normal.
+        if (context != ItemDisplayContext.GUI && !context.firstPerson()
+                && context != ItemDisplayContext.THIRD_PERSON_LEFT_HAND && context != ItemDisplayContext.THIRD_PERSON_RIGHT_HAND) {
             Integer percent = stack.get(ModRegistry.SCALE.get());
             if (percent != null && percent != 100) {
                 float f = percent / 100F;
