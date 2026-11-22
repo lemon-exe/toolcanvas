@@ -20,7 +20,7 @@
   "gui.toolcanvas.apply.free_reset": "This is the tool's original look; applying resets it for free.",
   "gui.toolcanvas.apply.need_material": "Needs 1× %s in the payment slot.",
   "gui.toolcanvas.reset": "Reset",
-  "gui.toolcanvas.reset.tooltip": "Put this tool back to its original look. Free.",
+  "gui.toolcanvas.reset.tooltip": "Put this tool back to its original look, glint and size. Free.",
   "gui.toolcanvas.hex": "Colour (#RRGGBB or #AARRGGBB)",
   "gui.toolcanvas.lighter": "Lighter",
   "gui.toolcanvas.darker": "Darker",
@@ -49,5 +49,12 @@
   "gui.toolcanvas.shrink": "Shrink",
   "gui.toolcanvas.shrink.tooltip": "Halve the resolution (e.g. 32×32 → 16×16). Each 2×2 block becomes its most common colour.",
   "gui.toolcanvas.upscale": "Upscale",
-  "gui.toolcanvas.upscale.tooltip": "Double the resolution (16×16 → 32×32 → 64×64) for finer detail. Your drawing is kept: each pixel becomes 2×2.\nShift+click: smooth upscale (rounds off diagonal edges)."
+  "gui.toolcanvas.upscale.tooltip": "Double the resolution (16×16 → 32×32 → 64×64) for finer detail. Your drawing is kept: each pixel becomes 2×2.\nShift+click: smooth upscale (rounds off diagonal edges).",
+  "gui.toolcanvas.copy": "Copy",
+  "gui.toolcanvas.copy.tooltip": "Copy the look of the item in the slot on the left (its custom design or original texture, plus glint colour and size) onto the canvas. Nothing changes until you press Apply.",
+  "gui.toolcanvas.apply.free": "Apply these changes. Free: only new pixel art costs material.",
+  "gui.toolcanvas.glint": "Glint",
+  "gui.toolcanvas.glint.tooltip": "Set the enchantment glint to your current paint colour.\nShift+click: back to the vanilla glint.\nOnly shows on enchanted tools. Free.",
+  "gui.toolcanvas.size": "Size %s%%",
+  "gui.toolcanvas.size.tooltip": "How big the tool looks when held, displayed or dropped (not in inventory slots). Free."
 }

@@ -1,5 +1,6 @@
 package io.github.toolcanvas.client.model;
 
+import io.github.toolcanvas.client.render.GlintRendering;
 import net.minecraft.client.renderer.RenderType;
 import net.minecraft.client.renderer.block.model.BakedQuad;
 import net.minecraft.client.renderer.block.model.ItemOverrides;
@@ -31,6 +32,8 @@ public final class DesignBakedModel implements BakedModel {
         // just bound to our texture instead of the block atlas.
         this.culled = List.of(RenderType.entityTranslucentCull(texture));
         this.unculled = List.of(RenderType.itemEntityTranslucentCull(texture));
+        GlintRendering.markDesignType(culled.get(0));
+        GlintRendering.markDesignType(unculled.get(0));
     }
 
     @Override

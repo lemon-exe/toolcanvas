@@ -23,6 +23,7 @@ import net.neoforged.neoforge.network.PacketDistributor;
 import net.neoforged.neoforge.network.event.RegisterPayloadHandlersEvent;
 import net.neoforged.neoforge.network.handling.IPayloadContext;
 import net.neoforged.neoforge.network.registration.PayloadRegistrar;
+import org.jetbrains.annotations.Nullable;
 
 /**
  * Four small packets. Items only carry a design id; clients fetch the pixels for an id once and cache them,
@@ -42,13 +43,24 @@ public final class Network {
 
     // ---------------------------------------------------------------- payloads
 
-    /** Client → server: paint the tool in the open Design Table with these pixels. */
-    public record ApplyDesign(int containerId, DesignData design) implements CustomPacketPayload {
+    /**
+     * Client → server: set the look of the tool in the open Design Table.
+     * {@code design == null} means "the tool's original texture"; {@code glint == -1} means vanilla glint;
+     * {@code scale} is a percentage (100 = normal size).
+     */
+    public record ApplyDesign(int containerId, @Nullable DesignData design, int glint, int scale) implements CustomPacketPayload {
         public static final Type<ApplyDesign> TYPE = new Type<>(ToolCanvas.id("apply_design"));
-        public static final StreamCodec<FriendlyByteBuf, ApplyDesign> STREAM_CODEC = StreamCodec.composite(
-                ByteBufCodecs.VAR_INT, ApplyDesign::containerId,
-                DesignData.STREAM_CODEC, ApplyDesign::design,
-                ApplyDesign::new);
+        public static final StreamCodec<FriendlyByteBuf, ApplyDesign> STREAM_CODEC = StreamCodec.of(
+                (buf, p) -> {
+                    buf.writeVarInt(p.containerId);
+                    buf.writeBoolean(p.design != null);
+                    if (p.design != null) DesignData.STREAM_CODEC.encode(buf, p.design);
+                    buf.writeInt(p.glint);
+                    buf.writeVarInt(p.scale);
+                },
+                buf -> new ApplyDesign(buf.readVarInt(),
+                        buf.readBoolean() ? DesignData.STREAM_CODEC.decode(buf) : null,
+                        buf.readInt(), buf.readVarInt()));
 
         @Override
         public Type<ApplyDesign> type() {
@@ -56,7 +68,7 @@ public final class Network {
         }
     }
 
-    /** Client → server: put the tool in the open Design Table back to its original look. */
+    /** Client → server: put the tool in the open Design Table back to its original look, glint and size. */
     public record ResetDesign(int containerId) implements CustomPacketPayload {
         public static final Type<ResetDesign> TYPE = new Type<>(ToolCanvas.id("reset_design"));
         public static final StreamCodec<ByteBuf, ResetDesign> STREAM_CODEC =
@@ -130,30 +142,50 @@ public final class Network {
 
         ItemStack tool = menu.getTool();
         if (!CanvasRules.isCustomizable(tool)) return;
+        if (payload.glint() < -1 || payload.glint() > 0xFFFFFF) return;
+        if (payload.scale() < ModRegistry.MIN_SCALE || payload.scale() > ModRegistry.MAX_SCALE) return;
 
-        DesignData raw = payload.design();
-        int max = CanvasConfig.maxCanvasSize();
-        if (raw.width() > max || raw.height() > max) return;
+        DesignData design = null;
+        long newId = 0;
+        if (payload.design() != null) {
+            DesignData raw = payload.design();
+            int max = CanvasConfig.maxCanvasSize();
+            if (raw.width() > max || raw.height() > max) return;
+            design = DesignData.normalized(raw.width(), raw.height(), raw.pixels());
+            newId = design.id();
+        }
 
-        DesignData design = DesignData.normalized(raw.width(), raw.height(), raw.pixels());
-        long id = design.id();
         CanvasDesign current = tool.get(ModRegistry.DESIGN.get());
-        if (current != null && current.id() == id) return; // nothing changed, don't charge
+        long currentId = current == null ? 0 : current.id();
+        int currentGlint = tool.getOrDefault(ModRegistry.GLINT.get(), -1);
+        int currentScale = tool.getOrDefault(ModRegistry.SCALE.get(), 100);
 
-        boolean pays = CanvasRules.paysCost(player);
+        boolean artChanged = newId != currentId;
+        if (!artChanged && payload.glint() == currentGlint && payload.scale() == currentScale) return;
+
+        // Only new pixel art costs material. Going back to the original texture, glint and size are free.
+        boolean pays = artChanged && newId != 0 && CanvasRules.paysCost(player);
         ItemStack material = menu.getMaterial();
         if (pays && !CanvasRules.isValidCost(tool, material)) {
             player.displayClientMessage(Component.translatable("message.toolcanvas.need_material"), true);
             return;
         }
 
-        DesignStorage.get(player.server).put(design);
-        tool.set(ModRegistry.DESIGN.get(), new CanvasDesign(id));
+        if (design != null) {
+            DesignStorage.get(player.server).put(design);
+            tool.set(ModRegistry.DESIGN.get(), new CanvasDesign(newId));
+        } else {
+            tool.remove(ModRegistry.DESIGN.get());
+        }
+        if (payload.glint() >= 0) tool.set(ModRegistry.GLINT.get(), payload.glint());
+        else tool.remove(ModRegistry.GLINT.get());
+        if (payload.scale() != 100) tool.set(ModRegistry.SCALE.get(), payload.scale());
+        else tool.remove(ModRegistry.SCALE.get());
         if (pays) material.shrink(1);
         menu.markChanged();
 
         // The painter sees the result immediately; everyone else fetches it the first time they see the tool.
-        PacketDistributor.sendToPlayer(player, new DesignPixels(id, design));
+        if (design != null) PacketDistributor.sendToPlayer(player, new DesignPixels(newId, design));
         player.level().playSound(null, player.blockPosition(), SoundEvents.VILLAGER_WORK_CARTOGRAPHER, SoundSource.BLOCKS, 1.0F, 1.0F);
     }
 
@@ -163,8 +195,11 @@ public final class Network {
         if (menu == null) return;
 
         ItemStack tool = menu.getTool();
-        if (tool.isEmpty() || !tool.has(ModRegistry.DESIGN.get())) return;
+        if (tool.isEmpty()) return;
+        if (!tool.has(ModRegistry.DESIGN.get()) && !tool.has(ModRegistry.GLINT.get()) && !tool.has(ModRegistry.SCALE.get())) return;
         tool.remove(ModRegistry.DESIGN.get());
+        tool.remove(ModRegistry.GLINT.get());
+        tool.remove(ModRegistry.SCALE.get());
         menu.markChanged();
         player.level().playSound(null, player.blockPosition(), SoundEvents.UI_CARTOGRAPHY_TABLE_TAKE_RESULT, SoundSource.BLOCKS, 1.0F, 1.0F);
     }

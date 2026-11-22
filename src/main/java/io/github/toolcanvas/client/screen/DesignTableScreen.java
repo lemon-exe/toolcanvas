@@ -7,6 +7,7 @@ import io.github.toolcanvas.DesignData;
 import io.github.toolcanvas.ModRegistry;
 import io.github.toolcanvas.client.ClientDesigns;
 import io.github.toolcanvas.client.TextureSampler;
+import io.github.toolcanvas.client.render.CanvasRenderTypes;
 import io.github.toolcanvas.menu.DesignTableMenu;
 import io.github.toolcanvas.network.Network;
 import net.minecraft.client.gui.GuiGraphics;
@@ -18,6 +19,7 @@ import net.minecraft.network.chat.Component;
 import net.minecraft.world.entity.player.Inventory;
 import net.minecraft.world.item.Item;
 import net.minecraft.world.item.ItemStack;
+import net.minecraft.world.item.Items;
 import net.neoforged.neoforge.network.PacketDistributor;
 import org.jetbrains.annotations.Nullable;
 import org.lwjgl.glfw.GLFW;
@@ -43,9 +45,11 @@ public class DesignTableScreen extends AbstractContainerScreen<DesignTableMenu> 
     // Layout (relative to leftPos/topPos)
     private static final int CANVAS_X = 182, CANVAS_Y = 6, CANVAS_SIZE = 160;
     private static final int PREVIEW_X = 133, PREVIEW_Y = 19, PREVIEW_SIZE = 32;
-    private static final int PALETTE_X = 8, PALETTE_Y = 90, SWATCH = 10, PALETTE_COLUMNS = 16;
+    private static final int PALETTE_X = 8, PALETTE_Y = 92, SWATCH = 10, PALETTE_COLUMNS = 16;
     private static final int TEXT_X = 34, TEXT_WIDTH = 94;
     private static final int HISTORY_LIMIT = 64;
+    private static final int ROW_Y = 170, ROW_STEP = 15, ROW_H = 14;
+    private static final int[] SIZES = {50, 75, 100, 125, 150, 175, 200, 250, 300};
 
     private static final int[] BASE_PALETTE = {
             0xFF000000, 0xFF3F3F3F, 0xFF7F7F7F, 0xFFBFBFBF, 0xFFFFFFFF, 0xFF8B4A21, 0xFFD32F2F, 0xFFF57C00,
@@ -67,6 +71,14 @@ public class DesignTableScreen extends AbstractContainerScreen<DesignTableMenu> 
     private long loadedDesign;
     private boolean waitingForDesign;
 
+    // Glint colour (-1 = vanilla) and size (percent): what the tool has now vs. what Apply will set
+    private int baseGlint = -1, pendingGlint = -1;
+    private int baseScale = 100, pendingScale = 100;
+
+    // Copy from the reference slot, waiting for the reference's design pixels to arrive
+    private boolean waitingForCopy;
+    private long copyDesign;
+
     // Editor settings
     private Tool tool = Tool.PEN;
     private int color = 0xFF000000;
@@ -80,13 +92,14 @@ public class DesignTableScreen extends AbstractContainerScreen<DesignTableMenu> 
     // Widgets
     private EditBox hexBox;
     private Button applyButton, resetButton, undoButton, redoButton, gridButton, mirrorButton, upscaleButton, shrinkButton;
+    private Button copyButton, glintButton, sizeDownButton, sizeUpButton;
     private final Map<Tool, Button> toolButtons = new HashMap<>();
     private boolean updatingHex;
 
     public DesignTableScreen(DesignTableMenu menu, Inventory inventory, Component title) {
         super(menu, inventory, title);
         imageWidth = 346;
-        imageHeight = 224;
+        imageHeight = 234;
         inventoryLabelX = DesignTableMenu.INVENTORY_X;
         inventoryLabelY = DesignTableMenu.INVENTORY_Y - 11;
         buildPalette(new int[0]);
@@ -99,52 +112,67 @@ public class DesignTableScreen extends AbstractContainerScreen<DesignTableMenu> 
         super.init();
         int x = leftPos, y = topPos;
 
+        // Row next to the reference slot: Copy / Apply / Reset
+        copyButton = addRenderableWidget(Button.builder(Component.translatable("gui.toolcanvas.copy"), b -> copyReference())
+                .bounds(x + 32, y + 67, 44, 18)
+                .tooltip(Tooltip.create(Component.translatable("gui.toolcanvas.copy.tooltip"))).build());
         applyButton = addRenderableWidget(Button.builder(Component.translatable("gui.toolcanvas.apply"), b -> apply())
-                .bounds(x + 8, y + 66, 79, 18).build());
+                .bounds(x + 78, y + 67, 44, 18).build());
         resetButton = addRenderableWidget(Button.builder(Component.translatable("gui.toolcanvas.reset"), b -> reset())
-                .bounds(x + 89, y + 66, 79, 18)
+                .bounds(x + 124, y + 67, 44, 18)
                 .tooltip(Tooltip.create(Component.translatable("gui.toolcanvas.reset.tooltip"))).build());
 
-        hexBox = new EditBox(font, x + 30, y + 114, 60, 12, Component.translatable("gui.toolcanvas.hex"));
+        hexBox = new EditBox(font, x + 30, y + 117, 60, 12, Component.translatable("gui.toolcanvas.hex"));
         hexBox.setMaxLength(9);
         hexBox.setResponder(this::onHexTyped);
         addRenderableWidget(hexBox);
         addRenderableWidget(Button.builder(Component.literal("+"), b -> setColor(shade(color, 1.2F)))
-                .bounds(x + 94, y + 113, 18, 14)
+                .bounds(x + 93, y + 116, 16, 14)
                 .tooltip(Tooltip.create(Component.translatable("gui.toolcanvas.lighter"))).build());
         addRenderableWidget(Button.builder(Component.literal("-"), b -> setColor(shade(color, 0.8F)))
-                .bounds(x + 114, y + 113, 18, 14)
+                .bounds(x + 111, y + 116, 16, 14)
                 .tooltip(Tooltip.create(Component.translatable("gui.toolcanvas.darker"))).build());
 
+        int cx = x + CANVAS_X;
         toolButtons.clear();
         Tool[] tools = Tool.values();
         for (int i = 0; i < tools.length; i++) {
             Tool t = tools[i];
             String key = t.name().toLowerCase(Locale.ROOT);
             toolButtons.put(t, addRenderableWidget(Button.builder(Component.translatable("gui.toolcanvas.tool." + key), b -> tool = t)
-                    .bounds(x + CANVAS_X + i * 40, y + 171, 39, 16)
+                    .bounds(cx + i * 40, y + ROW_Y, 39, ROW_H)
                     .tooltip(Tooltip.create(Component.translatable("gui.toolcanvas.tool." + key + ".tooltip"))).build()));
         }
+        int r2 = y + ROW_Y + ROW_STEP, r3 = r2 + ROW_STEP, r4 = r3 + ROW_STEP;
         undoButton = addRenderableWidget(Button.builder(Component.translatable("gui.toolcanvas.undo"), b -> undo())
-                .bounds(x + CANVAS_X, y + 189, 39, 16).tooltip(Tooltip.create(Component.literal("Ctrl+Z"))).build());
+                .bounds(cx, r2, 39, ROW_H).tooltip(Tooltip.create(Component.literal("Ctrl+Z"))).build());
         redoButton = addRenderableWidget(Button.builder(Component.translatable("gui.toolcanvas.redo"), b -> redo())
-                .bounds(x + CANVAS_X + 40, y + 189, 39, 16).tooltip(Tooltip.create(Component.literal("Ctrl+Y"))).build());
+                .bounds(cx + 40, r2, 39, ROW_H).tooltip(Tooltip.create(Component.literal("Ctrl+Y"))).build());
         gridButton = addRenderableWidget(Button.builder(Component.translatable("gui.toolcanvas.grid"), b -> grid = !grid)
-                .bounds(x + CANVAS_X + 80, y + 189, 39, 16).build());
+                .bounds(cx + 80, r2, 39, ROW_H).build());
         mirrorButton = addRenderableWidget(Button.builder(Component.translatable("gui.toolcanvas.mirror"), b -> mirror = !mirror)
-                .bounds(x + CANVAS_X + 120, y + 189, 39, 16)
+                .bounds(cx + 120, r2, 39, ROW_H)
                 .tooltip(Tooltip.create(Component.translatable("gui.toolcanvas.mirror.tooltip"))).build());
         addRenderableWidget(Button.builder(Component.translatable("gui.toolcanvas.clear"), b -> clearCanvas())
-                .bounds(x + CANVAS_X, y + 207, 39, 16).build());
+                .bounds(cx, r3, 39, ROW_H).build());
         addRenderableWidget(Button.builder(Component.translatable("gui.toolcanvas.original"), b -> loadOriginal())
-                .bounds(x + CANVAS_X + 40, y + 207, 39, 16)
+                .bounds(cx + 40, r3, 39, ROW_H)
                 .tooltip(Tooltip.create(Component.translatable("gui.toolcanvas.original.tooltip"))).build());
         shrinkButton = addRenderableWidget(Button.builder(Component.translatable("gui.toolcanvas.shrink"), b -> shrink())
-                .bounds(x + CANVAS_X + 80, y + 207, 39, 16)
+                .bounds(cx + 80, r3, 39, ROW_H)
                 .tooltip(Tooltip.create(Component.translatable("gui.toolcanvas.shrink.tooltip"))).build());
         upscaleButton = addRenderableWidget(Button.builder(Component.translatable("gui.toolcanvas.upscale"), b -> upscale(hasShiftDown()))
-                .bounds(x + CANVAS_X + 120, y + 207, 39, 16)
+                .bounds(cx + 120, r3, 39, ROW_H)
                 .tooltip(Tooltip.create(Component.translatable("gui.toolcanvas.upscale.tooltip"))).build());
+        sizeDownButton = addRenderableWidget(Button.builder(Component.literal("-"), b -> stepSize(-1))
+                .bounds(cx, r4, 19, ROW_H)
+                .tooltip(Tooltip.create(Component.translatable("gui.toolcanvas.size.tooltip"))).build());
+        sizeUpButton = addRenderableWidget(Button.builder(Component.literal("+"), b -> stepSize(1))
+                .bounds(cx + 60, r4, 19, ROW_H)
+                .tooltip(Tooltip.create(Component.translatable("gui.toolcanvas.size.tooltip"))).build());
+        glintButton = addRenderableWidget(Button.builder(Component.translatable("gui.toolcanvas.glint"), b -> setGlint(hasShiftDown()))
+                .bounds(cx + 80, r4, 79, ROW_H)
+                .tooltip(Tooltip.create(Component.translatable("gui.toolcanvas.glint.tooltip"))).build());
 
         setColor(color);
         updateButtons();
@@ -157,11 +185,24 @@ public class DesignTableScreen extends AbstractContainerScreen<DesignTableMenu> 
         super.containerTick();
         ItemStack tool = menu.getTool();
         long designId = designId(tool);
-        boolean changed = !ItemStack.isSameItem(tool, loadedTool) || designId != loadedDesign;
+        boolean changed = !ItemStack.isSameItem(tool, loadedTool) || designId != loadedDesign
+                || glintOf(tool) != baseGlint || scaleOf(tool) != baseScale;
         if (changed || (waitingForDesign && ClientDesigns.data(designId) != null)) {
             load(tool, designId);
         }
+        if (waitingForCopy) {
+            if (designId(menu.getReference()) != copyDesign) waitingForCopy = false;
+            else if (ClientDesigns.data(copyDesign) != null) copyReference();
+        }
         updateButtons();
+    }
+
+    private static int glintOf(ItemStack stack) {
+        return stack.isEmpty() ? -1 : stack.getOrDefault(ModRegistry.GLINT.get(), -1);
+    }
+
+    private static int scaleOf(ItemStack stack) {
+        return stack.isEmpty() ? 100 : stack.getOrDefault(ModRegistry.SCALE.get(), 100);
     }
 
     private static long designId(ItemStack stack) {
@@ -173,6 +214,8 @@ public class DesignTableScreen extends AbstractContainerScreen<DesignTableMenu> 
         boolean sameItem = !tool.isEmpty() && ItemStack.isSameItem(tool, loadedTool);
         loadedTool = tool.copy();
         loadedDesign = designId;
+        baseGlint = glintOf(tool);
+        baseScale = scaleOf(tool);
         if (tool.isEmpty()) {
             pixels = null;
             original = null;
@@ -203,6 +246,8 @@ public class DesignTableScreen extends AbstractContainerScreen<DesignTableMenu> 
             pixels = baseline.clone();
             cw = baseW;
             ch = baseH;
+            pendingGlint = baseGlint;
+            pendingScale = baseScale;
         }
         edited = isDirty();
     }
@@ -221,8 +266,23 @@ public class DesignTableScreen extends AbstractContainerScreen<DesignTableMenu> 
 
     // ================================================================ actions
 
-    private boolean isDirty() {
+    private boolean pixelsDirty() {
         return pixels != null && baseline != null && !(cw == baseW && ch == baseH && Arrays.equals(pixels, baseline));
+    }
+
+    /** Anything Apply would change: pixels, glint colour or size. */
+    private boolean isDirty() {
+        return pixels != null && (pixelsDirty() || pendingGlint != baseGlint || pendingScale != baseScale);
+    }
+
+    private boolean matchesOriginal() {
+        return pixels != null && original != null && cw == original.width() && ch == original.height()
+                && Arrays.equals(pixels, original.pixels());
+    }
+
+    /** Only new pixel art costs material; glint, size and going back to the original texture are free. */
+    private boolean artCosts() {
+        return pixelsDirty() && !matchesOriginal();
     }
 
     private boolean isBlank() {
@@ -237,22 +297,67 @@ public class DesignTableScreen extends AbstractContainerScreen<DesignTableMenu> 
     }
 
     private void apply() {
-        if (pixels == null || !isDirty() || isBlank()) return;
-        boolean backToOriginal = original != null && cw == original.width() && ch == original.height()
-                && Arrays.equals(pixels, original.pixels());
-        if (backToOriginal) {
-            if (loadedDesign != 0) PacketDistributor.sendToServer(new Network.ResetDesign(menu.containerId));
-            return;
-        }
-        if (!canPay()) return;
-        // When the server confirms, the tool's new design becomes the baseline (see load()).
-        PacketDistributor.sendToServer(new Network.ApplyDesign(menu.containerId, DesignData.normalized(cw, ch, pixels)));
+        if (pixels == null || !isDirty() || waitingForDesign) return;
+        boolean backToOriginal = matchesOriginal();
+        if (isBlank() && !backToOriginal) return;
+        if (artCosts() && !canPay()) return;
+        // When the server confirms, the tool's new look becomes the baseline (see load()).
+        DesignData design = backToOriginal ? null : DesignData.normalized(cw, ch, pixels);
+        PacketDistributor.sendToServer(new Network.ApplyDesign(menu.containerId, design, pendingGlint, pendingScale));
     }
 
     private void reset() {
-        if (loadedDesign == 0) return;
+        if (!hasCustomization()) return;
         PacketDistributor.sendToServer(new Network.ResetDesign(menu.containerId));
         edited = false; // show the original again once the server confirms
+    }
+
+    private boolean hasCustomization() {
+        return loadedDesign != 0 || baseGlint != -1 || baseScale != 100;
+    }
+
+    /** Puts the look of the item in the reference slot on the canvas, with its glint colour and size. */
+    private void copyReference() {
+        ItemStack reference = menu.getReference();
+        if (reference.isEmpty() || pixels == null) return;
+        long id = designId(reference);
+        DesignData design = id != 0 ? ClientDesigns.data(id) : null;
+        if (id != 0 && design == null) {
+            waitingForCopy = true; // pixels requested; copyReference() runs again when they arrive
+            copyDesign = id;
+            return;
+        }
+        waitingForCopy = false;
+        pushUndo();
+        if (design != null) {
+            pixels = design.pixels().clone();
+            cw = design.width();
+            ch = design.height();
+        } else {
+            TextureSampler.Image image = TextureSampler.original(reference, CanvasConfig.maxCanvasSize());
+            pixels = image.pixels().clone();
+            cw = image.width();
+            ch = image.height();
+        }
+        pendingGlint = glintOf(reference);
+        pendingScale = scaleOf(reference);
+        edited = true;
+    }
+
+    private void setGlint(boolean vanilla) {
+        if (pixels == null) return;
+        pendingGlint = vanilla ? -1 : CanvasRenderTypes.snap(color & 0xFFFFFF);
+        edited = true;
+    }
+
+    private void stepSize(int direction) {
+        if (pixels == null) return;
+        int index = 0;
+        for (int i = 0; i < SIZES.length; i++) if (SIZES[i] <= pendingScale) index = i;
+        if (direction < 0 && SIZES[index] == pendingScale) index--;
+        else if (direction > 0) index++;
+        pendingScale = SIZES[Math.clamp(index, 0, SIZES.length - 1)];
+        edited = true;
     }
 
     private void loadOriginal() {
@@ -370,27 +475,30 @@ public class DesignTableScreen extends AbstractContainerScreen<DesignTableMenu> 
         if (applyButton == null) return;
         boolean hasTool = pixels != null;
         boolean dirty = hasTool && isDirty();
-        applyButton.active = dirty && !isBlank() && !waitingForDesign && (canPay() || backToOriginalPending());
+        applyButton.active = dirty && !waitingForDesign && (!isBlank() || matchesOriginal()) && (!artCosts() || canPay());
         applyButton.setTooltip(Tooltip.create(applyTooltip(dirty)));
-        resetButton.active = loadedDesign != 0;
+        resetButton.active = hasCustomization();
+        copyButton.active = hasTool && !menu.getReference().isEmpty() && !waitingForCopy;
         undoButton.active = !undo.isEmpty();
+        redoButton.active = !redo.isEmpty();
         upscaleButton.active = canUpscale();
         shrinkButton.active = canShrink();
-        redoButton.active = !redo.isEmpty();
+        sizeDownButton.active = hasTool && pendingScale > SIZES[0];
+        sizeUpButton.active = hasTool && pendingScale < SIZES[SIZES.length - 1];
+        glintButton.active = hasTool;
+        glintButton.setMessage(pendingGlint < 0
+                ? Component.translatable("gui.toolcanvas.glint")
+                : Component.translatable("gui.toolcanvas.glint").append(" ")
+                        .append(Component.literal("■").withStyle(st -> st.withColor(pendingGlint))));
         gridButton.setMessage(Component.translatable(grid ? "gui.toolcanvas.grid.on" : "gui.toolcanvas.grid"));
         mirrorButton.setMessage(Component.translatable(mirror ? "gui.toolcanvas.mirror.on" : "gui.toolcanvas.mirror"));
-    }
-
-    private boolean backToOriginalPending() {
-        return original != null && loadedDesign != 0 && cw == original.width() && ch == original.height()
-                && Arrays.equals(pixels, original.pixels());
     }
 
     private Component applyTooltip(boolean dirty) {
         if (pixels == null) return Component.translatable("gui.toolcanvas.apply.no_tool");
         if (!dirty) return Component.translatable("gui.toolcanvas.apply.no_changes");
-        if (isBlank()) return Component.translatable("gui.toolcanvas.apply.blank");
-        if (backToOriginalPending()) return Component.translatable("gui.toolcanvas.apply.free_reset");
+        if (isBlank() && !matchesOriginal()) return Component.translatable("gui.toolcanvas.apply.blank");
+        if (!artCosts()) return Component.translatable("gui.toolcanvas.apply.free");
         if (!canPay()) return Component.translatable("gui.toolcanvas.apply.need_material", costName());
         return Component.translatable("gui.toolcanvas.apply.tooltip");
     }
@@ -610,6 +718,16 @@ public class DesignTableScreen extends AbstractContainerScreen<DesignTableMenu> 
 
         inset(g, x + DesignTableMenu.TOOL_X - 1, y + DesignTableMenu.TOOL_Y - 1, 18, 18);
         inset(g, x + DesignTableMenu.MATERIAL_X - 1, y + DesignTableMenu.MATERIAL_Y - 1, 18, 18);
+        inset(g, x + DesignTableMenu.REFERENCE_X - 1, y + DesignTableMenu.REFERENCE_Y - 1, 18, 18);
+        if (menu.getReference().isEmpty()) {
+            // faint sword silhouette: "put a tool to copy here"
+            g.renderFakeItem(new ItemStack(Items.IRON_SWORD), x + DesignTableMenu.REFERENCE_X, y + DesignTableMenu.REFERENCE_Y);
+            g.pose().pushPose();
+            g.pose().translate(0, 0, 300);
+            g.fill(x + DesignTableMenu.REFERENCE_X, y + DesignTableMenu.REFERENCE_Y,
+                    x + DesignTableMenu.REFERENCE_X + 16, y + DesignTableMenu.REFERENCE_Y + 16, 0xC08B8B8B);
+            g.pose().popPose();
+        }
         for (int row = 0; row < 3; row++) {
             for (int col = 0; col < 9; col++) {
                 inset(g, x + DesignTableMenu.INVENTORY_X - 1 + col * 18, y + DesignTableMenu.INVENTORY_Y - 1 + row * 18, 18, 18);
@@ -650,9 +768,9 @@ public class DesignTableScreen extends AbstractContainerScreen<DesignTableMenu> 
         }
 
         // Current colour
-        inset(g, x + 8, y + 113, 18, 14);
-        checker(g, x + 9, y + 114, 16, 12, 4);
-        g.fill(x + 9, y + 114, x + 25, y + 126, color);
+        inset(g, x + 8, y + 116, 18, 14);
+        checker(g, x + 9, y + 117, 16, 12, 4);
+        g.fill(x + 9, y + 117, x + 25, y + 129, color);
 
         // Canvas
         inset(g, x + CANVAS_X - 2, y + CANVAS_Y - 2, CANVAS_SIZE + 4, CANVAS_SIZE + 4);
@@ -695,15 +813,20 @@ public class DesignTableScreen extends AbstractContainerScreen<DesignTableMenu> 
             g.drawString(font, size, PREVIEW_X + PREVIEW_SIZE / 2 - font.width(size) / 2, PREVIEW_Y + PREVIEW_SIZE + 4, 0x404040, false);
         }
 
+        if (pixels != null) {
+            String size = Component.translatable("gui.toolcanvas.size", pendingScale).getString();
+            g.drawString(font, size, CANVAS_X + 40 - font.width(size) / 2, ROW_Y + 3 * ROW_STEP + 3, 0x404040, false);
+        }
+
         ItemStack tool = menu.getTool();
         if (tool.isEmpty()) {
             g.drawString(font, Component.translatable("gui.toolcanvas.status.empty"), TEXT_X, 25, 0x707070, false);
         } else {
             g.drawString(font, font.plainSubstrByWidth(tool.getHoverName().getString(), TEXT_WIDTH), TEXT_X, 21, 0x404040, false);
             Component state = waitingForDesign ? Component.translatable("gui.toolcanvas.status.loading")
-                    : loadedDesign != 0 ? Component.translatable("gui.toolcanvas.status.custom")
+                    : hasCustomization() ? Component.translatable("gui.toolcanvas.status.custom")
                     : Component.translatable("gui.toolcanvas.status.original");
-            g.drawString(font, state, TEXT_X, 30, loadedDesign != 0 ? 0x7A4FC0 : 0x707070, false);
+            g.drawString(font, state, TEXT_X, 30, hasCustomization() ? 0x7A4FC0 : 0x707070, false);
 
             if (minecraft != null && minecraft.player != null) {
                 boolean pays = CanvasRules.paysCost(minecraft.player);

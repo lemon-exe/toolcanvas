@@ -1,9 +1,11 @@
 package io.github.toolcanvas;
 
+import com.mojang.serialization.Codec;
 import io.github.toolcanvas.block.DesignTableBlock;
 import io.github.toolcanvas.menu.DesignTableMenu;
 import net.minecraft.core.component.DataComponentType;
 import net.minecraft.core.registries.Registries;
+import net.minecraft.network.codec.ByteBufCodecs;
 import net.minecraft.world.inventory.MenuType;
 import net.minecraft.world.item.BlockItem;
 import net.minecraft.world.item.Item;
@@ -44,6 +46,16 @@ public final class ModRegistry {
      */
     public static final DeferredHolder<DataComponentType<?>, DataComponentType<CanvasDesign>> DESIGN = COMPONENTS.registerComponentType("design",
             builder -> builder.persistent(CanvasDesign.CODEC).networkSynchronized(CanvasDesign.STREAM_CODEC));
+
+    /** Enchantment glint colour (0xRRGGBB) for one tool. Absent = vanilla purple. */
+    public static final DeferredHolder<DataComponentType<?>, DataComponentType<Integer>> GLINT = COMPONENTS.registerComponentType("glint",
+            builder -> builder.persistent(Codec.intRange(0, 0xFFFFFF)).networkSynchronized(ByteBufCodecs.VAR_INT));
+
+    /** Size in percent when held/displayed (not in inventory slots). Absent = 100. */
+    public static final DeferredHolder<DataComponentType<?>, DataComponentType<Integer>> SCALE = COMPONENTS.registerComponentType("scale",
+            builder -> builder.persistent(Codec.intRange(MIN_SCALE, MAX_SCALE)).networkSynchronized(ByteBufCodecs.VAR_INT));
+
+    public static final int MIN_SCALE = 50, MAX_SCALE = 300;
 
     private ModRegistry() {}
 

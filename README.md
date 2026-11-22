@@ -16,9 +16,14 @@ Repaint any tool or melee weapon, vanilla or modded, **one item at a time**, in-
    (Scale2x) upscale. **Shrink** halves it.
    Left-click paints, right-click erases, middle-click picks a colour. The top palette row is made of
    the tool's own colours; type any `#RRGGBB` / `#AARRGGBB` in the hex box.
+   - **Copy**: put any item in the third slot (left of the Copy button) and press Copy to load its look (custom design or
+     original texture, plus glint and size) onto the canvas.
+   - **Glint**: sets the enchantment glint colour to your current paint colour (Shift+click = vanilla purple).
+   - **Size − / +**: 50%–300%, how big the tool looks when held, on display or dropped (inventory icons stay normal).
 4. Put **1 repair material** in the payment slot (iron ingot for iron tools, planks for wood, a diamond
    for diamond, a modded weapon's own repair item...) and press **Apply**.
-5. **Reset** puts the tool back to its original look for free.
+   Only new pixel art costs material; glint colour, size and going back to the original texture are free.
+5. **Reset** puts the tool back to its original look, glint and size for free.
 
 Only that one item changes; every other tool of the same type keeps its own look.
 The custom look shows everywhere the item is drawn: inventory, hand (1st and 3rd person), item frames,

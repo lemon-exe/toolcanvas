@@ -14,17 +14,19 @@ import net.minecraft.world.item.ItemStack;
 public class DesignTableMenu extends AbstractContainerMenu {
     public static final int TOOL_SLOT = 0;
     public static final int MATERIAL_SLOT = 1;
-    private static final int INV_START = 2;
+    public static final int REFERENCE_SLOT = 2;
+    private static final int INV_START = 3;
     private static final int HOTBAR_START = INV_START + 27;
     private static final int INV_END = HOTBAR_START + 9;
 
     // Slot positions, shared with the screen layout.
     public static final int TOOL_X = 12, TOOL_Y = 20;
     public static final int MATERIAL_X = 12, MATERIAL_Y = 44;
-    public static final int INVENTORY_X = 8, INVENTORY_Y = 142;
+    public static final int REFERENCE_X = 12, REFERENCE_Y = 68;
+    public static final int INVENTORY_X = 8, INVENTORY_Y = 152;
 
     private final ContainerLevelAccess access;
-    private final Container container = new SimpleContainer(2) {
+    private final Container container = new SimpleContainer(3) {
         @Override
         public void setChanged() {
             super.setChanged();
@@ -54,6 +56,13 @@ public class DesignTableMenu extends AbstractContainerMenu {
             }
         });
         addSlot(new Slot(container, MATERIAL_SLOT, MATERIAL_X, MATERIAL_Y));
+        // Any item: its look can be copied onto the canvas.
+        addSlot(new Slot(container, REFERENCE_SLOT, REFERENCE_X, REFERENCE_Y) {
+            @Override
+            public int getMaxStackSize() {
+                return 1;
+            }
+        });
 
         for (int row = 0; row < 3; row++) {
             for (int col = 0; col < 9; col++) {
@@ -71,6 +80,10 @@ public class DesignTableMenu extends AbstractContainerMenu {
 
     public ItemStack getMaterial() {
         return container.getItem(MATERIAL_SLOT);
+    }
+
+    public ItemStack getReference() {
+        return container.getItem(REFERENCE_SLOT);
     }
 
     /** Call after changing the tool or material stacks in place, so the change is synced. */
@@ -102,6 +115,8 @@ public class DesignTableMenu extends AbstractContainerMenu {
             if (!moveItemStackTo(stack, INV_START, INV_END, true)) return ItemStack.EMPTY;
         } else if (CanvasRules.isCustomizable(stack) && !slots.get(TOOL_SLOT).hasItem()) {
             if (!moveItemStackTo(stack, TOOL_SLOT, TOOL_SLOT + 1, false)) return ItemStack.EMPTY;
+        } else if (CanvasRules.isCustomizable(stack) && !slots.get(REFERENCE_SLOT).hasItem()) {
+            if (!moveItemStackTo(stack, REFERENCE_SLOT, REFERENCE_SLOT + 1, false)) return ItemStack.EMPTY;
         } else if (CanvasRules.isValidCost(getTool(), stack)) {
             if (!moveItemStackTo(stack, MATERIAL_SLOT, MATERIAL_SLOT + 1, false)) return ItemStack.EMPTY;
         } else if (index < HOTBAR_START) {

@@ -3,6 +3,8 @@ package io.github.toolcanvas.client;
 import io.github.toolcanvas.ModRegistry;
 import io.github.toolcanvas.ToolCanvas;
 import io.github.toolcanvas.client.model.CanvasWrappedModel;
+import io.github.toolcanvas.client.render.CanvasRenderTypes;
+import io.github.toolcanvas.client.render.GlintRendering;
 import io.github.toolcanvas.client.screen.DesignTableScreen;
 import net.minecraft.client.resources.model.BakedModel;
 import net.minecraft.client.resources.model.ModelResourceLocation;
@@ -17,6 +19,7 @@ import net.neoforged.neoforge.client.event.ClientPlayerNetworkEvent;
 import net.neoforged.neoforge.client.event.ClientTickEvent;
 import net.neoforged.neoforge.client.event.ModelEvent;
 import net.neoforged.neoforge.client.event.RegisterMenuScreensEvent;
+import net.neoforged.neoforge.client.event.RegisterRenderBuffersEvent;
 import net.neoforged.neoforge.common.NeoForge;
 
 import java.util.Map;
@@ -25,7 +28,11 @@ import java.util.Map;
 public final class ToolCanvasClient {
     public ToolCanvasClient(IEventBus modBus) {
         modBus.addListener(ToolCanvasClient::wrapToolModels);
-        modBus.addListener(ModelEvent.BakingCompleted.class, e -> ClientDesigns.onModelsReloaded());
+        modBus.addListener(ModelEvent.BakingCompleted.class, e -> {
+            ClientDesigns.onModelsReloaded();
+            GlintRendering.onResourcesReloaded();
+        });
+        modBus.addListener(RegisterRenderBuffersEvent.class, CanvasRenderTypes::registerBuffers);
         modBus.addListener(RegisterMenuScreensEvent.class, e -> e.register(ModRegistry.DESIGN_TABLE_MENU.get(), DesignTableScreen::new));
 
         NeoForge.EVENT_BUS.addListener(ClientTickEvent.Post.class, e -> ClientDesigns.tick());
