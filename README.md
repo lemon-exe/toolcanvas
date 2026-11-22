@@ -19,7 +19,7 @@ Repaint any tool or melee weapon, vanilla or modded, **one item at a time**, in-
    - **Copy**: put any item in the third slot (left of the Copy button) and press Copy to load its look (custom design or
      original texture, plus glint and size) onto the canvas.
    - **Glint**: sets the enchantment glint colour to your current paint colour (Shift+click = vanilla purple).
-   - **Size − / +**: 50%–300%, how big the tool looks on displays, in item frames and when dropped (held and inventory views stay normal).
+   - **Size − / +**: 50%–300%, how big the tool looks on displays, in item frames and when dropped. **Hand** toggles whether the size also applies when held (off by default). Inventory icons stay normal.
 4. Put **1 repair material** in the payment slot (iron ingot for iron tools, planks for wood, a diamond
    for diamond, a modded weapon's own repair item...) and press **Apply**.
    Only new pixel art costs material; glint colour, size and going back to the original texture are free.
