@@ -2,15 +2,16 @@ package io.github.toolcanvas.client.render;
 
 import com.mojang.blaze3d.platform.NativeImage;
 import com.mojang.blaze3d.vertex.VertexConsumer;
-import com.mojang.blaze3d.vertex.VertexMultiConsumer;
 import io.github.toolcanvas.ModRegistry;
 import io.github.toolcanvas.ToolCanvas;
+import io.github.toolcanvas.client.model.DesignBakedModel;
 import it.unimi.dsi.fastutil.objects.ReferenceOpenHashSet;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.renderer.MultiBufferSource;
 import net.minecraft.client.renderer.RenderType;
 import net.minecraft.client.renderer.texture.DynamicTexture;
 import net.minecraft.client.renderer.texture.TextureAtlasSprite;
+import net.minecraft.client.resources.model.BakedModel;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.world.item.ItemStack;
 import net.neoforged.neoforge.client.model.pipeline.VertexConsumerWrapper;
@@ -33,35 +34,49 @@ public final class GlintRendering {
         DESIGN_TYPES.add(type);
     }
 
+    private static boolean isDesignType(RenderType type) {
+        synchronized (GlintRendering.class) {
+            return DESIGN_TYPES.contains(type);
+        }
+    }
+
     /**
      * Replacement for ItemRenderer#getFoilBufferDirect, or null to let vanilla handle it.
-     * Designs draw into their own small texture with UVs 0..1, so vanilla's glint (which scales UVs by 8)
-     * would tile into a grid. We remap the glint UVs onto the tool's original atlas sprite instead, which
-     * gives exactly the glint vanilla would draw on the untouched tool.
+     * For designs and custom glint colours we return the plain buffer (no glint) and draw the glint
+     * afterwards in {@link #renderGlintPass}. Writing two buffers at once breaks when a mod
+     * (e.g. ImmediatelyFast's GUI batching) closes one buffer while the other is requested.
      */
     @Nullable
     public static VertexConsumer foilBuffer(MultiBufferSource buffers, RenderType type, boolean glint, ItemStack stack) {
         if (!glint) return null;
-        Integer color = stack.get(ModRegistry.GLINT.get());
-        boolean design;
-        synchronized (GlintRendering.class) {
-            design = DESIGN_TYPES.contains(type);
-        }
-        if (color == null && !design) return null;
+        if (!stack.has(ModRegistry.GLINT.get()) && !isDesignType(type)) return null;
+        return buffers.getBuffer(type);
+    }
 
+    /** Whether {@link #renderGlintPass} should draw a glint for this model + stack. */
+    public static boolean handlesGlint(BakedModel model, ItemStack stack) {
+        return stack.hasFoil() && (model instanceof DesignBakedModel || stack.has(ModRegistry.GLINT.get()));
+    }
+
+    /**
+     * The glint buffer for the second pass. Designs draw into their own small texture with UVs 0..1, so
+     * vanilla's glint (which scales UVs by 8) would tile into a grid; we remap the glint UVs onto the tool's
+     * original atlas sprite, which gives exactly the glint vanilla would draw on the untouched tool.
+     */
+    public static VertexConsumer glintBuffer(MultiBufferSource buffers, BakedModel model, ItemStack stack) {
+        Integer color = stack.get(ModRegistry.GLINT.get());
         RenderType glintType = null;
         if (color != null) {
             ensureGrayGlint();
             glintType = CanvasRenderTypes.glint(color);
         }
         if (glintType == null) glintType = RenderType.glint();
-
-        VertexConsumer glintConsumer = buffers.getBuffer(glintType);
-        if (design) {
+        VertexConsumer consumer = buffers.getBuffer(glintType);
+        if (model instanceof DesignBakedModel) {
             TextureAtlasSprite sprite = Minecraft.getInstance().getItemRenderer().getItemModelShaper().getItemModel(stack).getParticleIcon();
-            glintConsumer = new SpriteUv(glintConsumer, sprite);
+            consumer = new SpriteUv(consumer, sprite);
         }
-        return VertexMultiConsumer.create(glintConsumer, buffers.getBuffer(type));
+        return consumer;
     }
 
     /** Resource packs may change the glint texture; rebuild the grayscale copy on reload. */

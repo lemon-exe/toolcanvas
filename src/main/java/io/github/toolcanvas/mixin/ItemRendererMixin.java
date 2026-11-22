@@ -56,6 +56,21 @@ public abstract class ItemRendererMixin {
         return custom != null ? custom : original.call(buffers, type, noEntity, glint);
     }
 
+    /** Second pass: draw the glint on top of the already-written tool (see GlintRendering#foilBuffer). */
+    @WrapOperation(
+            method = "render",
+            at = @At(value = "INVOKE",
+                    target = "Lnet/minecraft/client/renderer/entity/ItemRenderer;renderModelLists(Lnet/minecraft/client/resources/model/BakedModel;Lnet/minecraft/world/item/ItemStack;IILcom/mojang/blaze3d/vertex/PoseStack;Lcom/mojang/blaze3d/vertex/VertexConsumer;)V"),
+            require = 0)
+    private void toolcanvas$glintPass(ItemRenderer self, BakedModel model, ItemStack stack, int light, int overlay,
+                                      PoseStack poseStack, VertexConsumer consumer, Operation<Void> original,
+                                      @Local(argsOnly = true) MultiBufferSource buffers) {
+        original.call(self, model, stack, light, overlay, poseStack, consumer);
+        if (GlintRendering.handlesGlint(model, stack)) {
+            original.call(self, model, stack, light, overlay, poseStack, GlintRendering.glintBuffer(buffers, model, stack));
+        }
+    }
+
     @WrapOperation(
             method = "render",
             at = @At(value = "INVOKE",
