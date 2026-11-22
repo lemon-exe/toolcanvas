@@ -1,0 +1,19 @@
+name: Inspect
+on:
+  push:
+    branches: [debug]
+jobs:
+  inspect:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v5
+        with: { java-version: '21', distribution: 'temurin' }
+      - uses: gradle/actions/setup-gradle@v4
+      - run: chmod +x gradlew && ./gradlew compileJava --continue || true
+      - run: |
+          JAR=$(find ~/.gradle build .gradle -name '*.jar' 2>/dev/null | grep -iE 'minecraft|neoforge' | xargs -I{} sh -c 'unzip -l "{}" 2>/dev/null | grep -q "net/minecraft/client/renderer/RenderType.class" && echo "{}"' | head -1)
+          echo "JAR=$JAR"
+          javap -p -cp "$JAR" net.minecraft.client.renderer.RenderType | grep -i glint
+          javap -p -cp "$JAR" net.minecraft.client.renderer.RenderStateShard | grep -i glint
+          javap -p -c -cp "$JAR" net.minecraft.client.renderer.entity.ItemRenderer | grep -iA30 "getFoilBufferDirect(" | grep -i "invoke\|getFoil" | head -20
