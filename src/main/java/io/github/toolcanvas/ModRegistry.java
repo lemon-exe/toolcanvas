@@ -21,6 +21,8 @@ import net.neoforged.neoforge.registries.DeferredItem;
 import net.neoforged.neoforge.registries.DeferredRegister;
 
 public final class ModRegistry {
+    public static final int MIN_SCALE = 50, MAX_SCALE = 300;
+
     private static final DeferredRegister.Blocks BLOCKS = DeferredRegister.createBlocks(ToolCanvas.MODID);
     private static final DeferredRegister.Items ITEMS = DeferredRegister.createItems(ToolCanvas.MODID);
     private static final DeferredRegister<MenuType<?>> MENUS = DeferredRegister.create(Registries.MENU, ToolCanvas.MODID);
@@ -54,8 +56,6 @@ public final class ModRegistry {
     /** Size in percent when held/displayed (not in inventory slots). Absent = 100. */
     public static final DeferredHolder<DataComponentType<?>, DataComponentType<Integer>> SCALE = COMPONENTS.registerComponentType("scale",
             builder -> builder.persistent(Codec.intRange(MIN_SCALE, MAX_SCALE)).networkSynchronized(ByteBufCodecs.VAR_INT));
-
-    public static final int MIN_SCALE = 50, MAX_SCALE = 300;
 
     private ModRegistry() {}
 

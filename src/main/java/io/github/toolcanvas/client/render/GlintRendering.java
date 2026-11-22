@@ -54,7 +54,7 @@ public final class GlintRendering {
             ensureGrayGlint();
             glintType = CanvasRenderTypes.glint(color);
         }
-        if (glintType == null) glintType = RenderType.glintDirect();
+        if (glintType == null) glintType = RenderType.glint();
 
         VertexConsumer glintConsumer = buffers.getBuffer(glintType);
         if (design) {

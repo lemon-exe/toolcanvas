@@ -63,7 +63,7 @@ public final class CanvasRenderTypes extends RenderType {
     private static RenderType makeGlint(int index, float r, float g, float b) {
         return RenderType.create("toolcanvas_glint_" + index, DefaultVertexFormat.POSITION_TEX, VertexFormat.Mode.QUADS, 1536, false, false,
                 RenderType.CompositeState.builder()
-                        .setShaderState(RENDERTYPE_GLINT_DIRECT_SHADER)
+                        .setShaderState(RENDERTYPE_GLINT_SHADER)
                         .setTextureState(new RenderStateShard.TextureStateShard(GRAY_GLINT, true, false))
                         .setWriteMaskState(COLOR_WRITE)
                         .setCullState(NO_CULL)
