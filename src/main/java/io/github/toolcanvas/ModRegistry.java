@@ -57,6 +57,10 @@ public final class ModRegistry {
     public static final DeferredHolder<DataComponentType<?>, DataComponentType<Integer>> SCALE = COMPONENTS.registerComponentType("scale",
             builder -> builder.persistent(Codec.intRange(MIN_SCALE, MAX_SCALE)).networkSynchronized(ByteBufCodecs.VAR_INT));
 
+    /** Present (true) = the size setting also applies when the tool is held. Absent = displays only. */
+    public static final DeferredHolder<DataComponentType<?>, DataComponentType<Boolean>> SCALE_IN_HAND = COMPONENTS.registerComponentType("scale_in_hand",
+            builder -> builder.persistent(Codec.BOOL).networkSynchronized(ByteBufCodecs.BOOL));
+
     private ModRegistry() {}
 
     static void register(IEventBus modBus) {

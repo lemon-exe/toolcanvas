@@ -34,9 +34,11 @@ public abstract class ItemRendererMixin {
                                                  boolean leftHand, Operation<BakedModel> original,
                                                  @Local(argsOnly = true) ItemStack stack) {
         BakedModel result = original.call(poseStack, ClientDesigns.designModelFor(stack, model), context, leftHand);
-        // Size is for showing tools off: displays, item frames, dropped items. Inventory and hands stay normal.
-        if (context != ItemDisplayContext.GUI && !context.firstPerson()
-                && context != ItemDisplayContext.THIRD_PERSON_LEFT_HAND && context != ItemDisplayContext.THIRD_PERSON_RIGHT_HAND) {
+        // Size is for showing tools off (displays, item frames, dropped items). Inventory icons never scale;
+        // held views only scale if the tool's "Hand" toggle is on.
+        boolean held = context.firstPerson()
+                || context == ItemDisplayContext.THIRD_PERSON_LEFT_HAND || context == ItemDisplayContext.THIRD_PERSON_RIGHT_HAND;
+        if (context != ItemDisplayContext.GUI && (!held || stack.has(ModRegistry.SCALE_IN_HAND.get()))) {
             Integer percent = stack.get(ModRegistry.SCALE.get());
             if (percent != null && percent != 100) {
                 float f = percent / 100F;

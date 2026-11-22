@@ -74,6 +74,7 @@ public class DesignTableScreen extends AbstractContainerScreen<DesignTableMenu> 
     // Glint colour (-1 = vanilla) and size (percent): what the tool has now vs. what Apply will set
     private int baseGlint = -1, pendingGlint = -1;
     private int baseScale = 100, pendingScale = 100;
+    private boolean baseInHand, pendingInHand;
 
     // Copy from the reference slot, waiting for the reference's design pixels to arrive
     private boolean waitingForCopy;
@@ -92,7 +93,7 @@ public class DesignTableScreen extends AbstractContainerScreen<DesignTableMenu> 
     // Widgets
     private EditBox hexBox;
     private Button applyButton, resetButton, undoButton, redoButton, gridButton, mirrorButton, upscaleButton, shrinkButton;
-    private Button copyButton, glintButton, sizeDownButton, sizeUpButton;
+    private Button copyButton, glintButton, sizeDownButton, sizeUpButton, inHandButton;
     private final Map<Tool, Button> toolButtons = new HashMap<>();
     private boolean updatingHex;
 
@@ -170,8 +171,11 @@ public class DesignTableScreen extends AbstractContainerScreen<DesignTableMenu> 
         sizeUpButton = addRenderableWidget(Button.builder(Component.literal("+"), b -> stepSize(1))
                 .bounds(cx + 60, r4, 19, ROW_H)
                 .tooltip(Tooltip.create(Component.translatable("gui.toolcanvas.size.tooltip"))).build());
+        inHandButton = addRenderableWidget(Button.builder(Component.translatable("gui.toolcanvas.in_hand"), b -> toggleInHand())
+                .bounds(cx + 80, r4, 39, ROW_H)
+                .tooltip(Tooltip.create(Component.translatable("gui.toolcanvas.in_hand.tooltip"))).build());
         glintButton = addRenderableWidget(Button.builder(Component.translatable("gui.toolcanvas.glint"), b -> setGlint(hasShiftDown()))
-                .bounds(cx + 80, r4, 79, ROW_H)
+                .bounds(cx + 120, r4, 39, ROW_H)
                 .tooltip(Tooltip.create(Component.translatable("gui.toolcanvas.glint.tooltip"))).build());
 
         setColor(color);
@@ -186,7 +190,7 @@ public class DesignTableScreen extends AbstractContainerScreen<DesignTableMenu> 
         ItemStack tool = menu.getTool();
         long designId = designId(tool);
         boolean changed = !ItemStack.isSameItem(tool, loadedTool) || designId != loadedDesign
-                || glintOf(tool) != baseGlint || scaleOf(tool) != baseScale;
+                || glintOf(tool) != baseGlint || scaleOf(tool) != baseScale || inHandOf(tool) != baseInHand;
         if (changed || (waitingForDesign && ClientDesigns.data(designId) != null)) {
             load(tool, designId);
         }
@@ -205,6 +209,10 @@ public class DesignTableScreen extends AbstractContainerScreen<DesignTableMenu> 
         return stack.isEmpty() ? 100 : stack.getOrDefault(ModRegistry.SCALE.get(), 100);
     }
 
+    private static boolean inHandOf(ItemStack stack) {
+        return !stack.isEmpty() && stack.has(ModRegistry.SCALE_IN_HAND.get());
+    }
+
     private static long designId(ItemStack stack) {
         CanvasDesign design = stack.get(ModRegistry.DESIGN.get());
         return design == null ? 0 : design.id();
@@ -216,6 +224,7 @@ public class DesignTableScreen extends AbstractContainerScreen<DesignTableMenu> 
         loadedDesign = designId;
         baseGlint = glintOf(tool);
         baseScale = scaleOf(tool);
+        baseInHand = inHandOf(tool);
         if (tool.isEmpty()) {
             pixels = null;
             original = null;
@@ -248,6 +257,7 @@ public class DesignTableScreen extends AbstractContainerScreen<DesignTableMenu> 
             ch = baseH;
             pendingGlint = baseGlint;
             pendingScale = baseScale;
+            pendingInHand = baseInHand;
         }
         edited = isDirty();
     }
@@ -272,7 +282,7 @@ public class DesignTableScreen extends AbstractContainerScreen<DesignTableMenu> 
 
     /** Anything Apply would change: pixels, glint colour or size. */
     private boolean isDirty() {
-        return pixels != null && (pixelsDirty() || pendingGlint != baseGlint || pendingScale != baseScale);
+        return pixels != null && (pixelsDirty() || pendingGlint != baseGlint || pendingScale != baseScale || pendingInHand != baseInHand);
     }
 
     private boolean matchesOriginal() {
@@ -303,7 +313,7 @@ public class DesignTableScreen extends AbstractContainerScreen<DesignTableMenu> 
         if (artCosts() && !canPay()) return;
         // When the server confirms, the tool's new look becomes the baseline (see load()).
         DesignData design = backToOriginal ? null : DesignData.normalized(cw, ch, pixels);
-        PacketDistributor.sendToServer(new Network.ApplyDesign(menu.containerId, design, pendingGlint, pendingScale));
+        PacketDistributor.sendToServer(new Network.ApplyDesign(menu.containerId, design, pendingGlint, pendingScale, pendingInHand));
     }
 
     private void reset() {
@@ -313,7 +323,7 @@ public class DesignTableScreen extends AbstractContainerScreen<DesignTableMenu> 
     }
 
     private boolean hasCustomization() {
-        return loadedDesign != 0 || baseGlint != -1 || baseScale != 100;
+        return loadedDesign != 0 || baseGlint != -1 || baseScale != 100 || baseInHand;
     }
 
     /** Puts the look of the item in the reference slot on the canvas, with its glint colour and size. */
@@ -341,12 +351,19 @@ public class DesignTableScreen extends AbstractContainerScreen<DesignTableMenu> 
         }
         pendingGlint = glintOf(reference);
         pendingScale = scaleOf(reference);
+        pendingInHand = inHandOf(reference);
         edited = true;
     }
 
     private void setGlint(boolean vanilla) {
         if (pixels == null) return;
         pendingGlint = vanilla ? -1 : CanvasRenderTypes.snap(color & 0xFFFFFF);
+        edited = true;
+    }
+
+    private void toggleInHand() {
+        if (pixels == null) return;
+        pendingInHand = !pendingInHand;
         edited = true;
     }
 
@@ -486,6 +503,8 @@ public class DesignTableScreen extends AbstractContainerScreen<DesignTableMenu> 
         sizeDownButton.active = hasTool && pendingScale > SIZES[0];
         sizeUpButton.active = hasTool && pendingScale < SIZES[SIZES.length - 1];
         glintButton.active = hasTool;
+        inHandButton.active = hasTool;
+        inHandButton.setMessage(Component.translatable(pendingInHand ? "gui.toolcanvas.in_hand.on" : "gui.toolcanvas.in_hand"));
         glintButton.setMessage(pendingGlint < 0
                 ? Component.translatable("gui.toolcanvas.glint")
                 : Component.translatable("gui.toolcanvas.glint").append(" ")
