@@ -1,0 +1,17 @@
+{
+  "type": "minecraft:crafting_shaped",
+  "category": "misc",
+  "pattern": [
+    "PDP",
+    "ITI",
+    "# #"
+  ],
+  "key": {
+    "P": { "item": "minecraft:paper" },
+    "D": { "tag": "c:dyes" },
+    "I": { "tag": "c:ingots/iron" },
+    "T": { "item": "minecraft:crafting_table" },
+    "#": { "tag": "minecraft:planks" }
+  },
+  "result": { "id": "toolcanvas:design_table", "count": 1 }
+}

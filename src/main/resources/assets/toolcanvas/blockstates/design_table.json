@@ -1,0 +1,8 @@
+{
+  "variants": {
+    "facing=north": { "model": "toolcanvas:block/design_table" },
+    "facing=east":  { "model": "toolcanvas:block/design_table", "y": 90 },
+    "facing=south": { "model": "toolcanvas:block/design_table", "y": 180 },
+    "facing=west":  { "model": "toolcanvas:block/design_table", "y": 270 }
+  }
+}

@@ -1,0 +1,12 @@
+{
+  "parent": "minecraft:block/cube",
+  "textures": {
+    "particle": "toolcanvas:block/design_table_front",
+    "north": "toolcanvas:block/design_table_front",
+    "south": "toolcanvas:block/design_table_side",
+    "east": "toolcanvas:block/design_table_side",
+    "west": "toolcanvas:block/design_table_side",
+    "up": "toolcanvas:block/design_table_top",
+    "down": "minecraft:block/oak_planks"
+  }
+}
