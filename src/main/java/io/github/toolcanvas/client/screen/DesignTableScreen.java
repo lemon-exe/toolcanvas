@@ -1026,10 +1026,10 @@ public class DesignTableScreen extends AbstractContainerScreen<DesignTableMenu> 
             for (int i = 1; i < ch; i++) g.fill(ox, oy + i * s, ox + cw * s, oy + i * s + 1, 0x33000000);
         }
         int[] hover = pixelAt(mx, my);
-        if (hover != null && tool != Tool.SELECT) {
+        if (hover != null && this.tool != Tool.SELECT) {
             outline(g, ox + hover[0] * s, oy + hover[1] * s, s, s, 0xCCFFFFFF);
             int[] m = mirrored(hover[0], hover[1]);
-            if (m != null && tool != Tool.GRIP && tool != Tool.PICKER) outline(g, ox + m[0] * s, oy + m[1] * s, s, s, 0x66FFFFFF);
+            if (m != null && this.tool != Tool.GRIP && this.tool != Tool.PICKER) outline(g, ox + m[0] * s, oy + m[1] * s, s, s, 0x66FFFFFF);
         }
         if (mirror != Mirror.OFF && cw == ch) {
             int span = cw * s;
@@ -1043,7 +1043,7 @@ public class DesignTableScreen extends AbstractContainerScreen<DesignTableMenu> 
             marchingAnts(g, ox + sx * s, oy + sy * s, selW * s, selH * s);
         }
         // Grip: where the hand holds by default (cyan) and the chosen grip pixel (gold crosshair).
-        if (tool == Tool.GRIP) {
+        if (this.tool == Tool.GRIP) {
             int dx = Math.min(cw - 1, ModRegistry.DEFAULT_GRIP_U * cw / 1000);
             int dy = Math.min(ch - 1, ModRegistry.DEFAULT_GRIP_V * ch / 1000);
             outline(g, ox + dx * s - 1, oy + dy * s - 1, s + 2, s + 2, 0xCC40E0FF);
