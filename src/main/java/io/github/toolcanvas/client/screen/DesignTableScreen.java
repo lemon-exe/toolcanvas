@@ -38,17 +38,20 @@ import java.util.Map;
  * Left panel: slots, preview, apply/reset, palette. Right panel: the canvas and drawing tools.
  */
 public class DesignTableScreen extends AbstractContainerScreen<DesignTableMenu> {
-    private enum Tool { PEN, ERASER, FILL, PICKER }
+    private enum Tool { PEN, ERASER, FILL, PICKER, SELECT, GRIP }
+
+    /** Symmetry axis for the pen/eraser/fill. Diagonals only work on square canvases. */
+    private enum Mirror { OFF, DIAGONAL, ANTI_DIAGONAL }
 
     private record Snapshot(int w, int h, int[] pixels) {}
 
     // Layout (relative to leftPos/topPos)
-    private static final int CANVAS_X = 182, CANVAS_Y = 6, CANVAS_SIZE = 160;
+    private static final int BUTTON_X = 182, CANVAS_X = 190, CANVAS_Y = 6, CANVAS_SIZE = 144;
     private static final int PREVIEW_X = 133, PREVIEW_Y = 19, PREVIEW_SIZE = 32;
     private static final int PALETTE_X = 8, PALETTE_Y = 92, SWATCH = 10, PALETTE_COLUMNS = 16;
     private static final int TEXT_X = 34, TEXT_WIDTH = 94;
     private static final int HISTORY_LIMIT = 64;
-    private static final int ROW_Y = 170, ROW_STEP = 15, ROW_H = 14;
+    private static final int ROW_Y = 154, ROW_STEP = 15, ROW_H = 14;
     private static final int[] SIZES = {50, 75, 100, 125, 150, 175, 200, 250, 300};
 
     private static final int[] BASE_PALETTE = {
@@ -75,6 +78,7 @@ public class DesignTableScreen extends AbstractContainerScreen<DesignTableMenu> 
     private int baseGlint = -1, pendingGlint = -1;
     private int baseScale = 100, pendingScale = 100;
     private boolean baseInHand, pendingInHand;
+    private int baseGrip = -1, pendingGrip = -1;
 
     // Copy from the reference slot, waiting for the reference's design pixels to arrive
     private boolean waitingForCopy;
@@ -84,16 +88,22 @@ public class DesignTableScreen extends AbstractContainerScreen<DesignTableMenu> 
     private Tool tool = Tool.PEN;
     private int color = 0xFF000000;
     private boolean grid = true;
-    private boolean mirror;
+    private Mirror mirror = Mirror.OFF;
     private boolean painting;
     private boolean paintErase;
     private int lastPx = -1, lastPy = -1;
     private final List<Integer> palette = new ArrayList<>();
 
+    // Selection (canvas pixels) and the pixels being dragged
+    private boolean hasSelection, selecting;
+    private int selX, selY, selW, selH, selAnchorX, selAnchorY;
+    @Nullable private int[] floating;
+    private int floatX, floatY, moveGrabX, moveGrabY, moveOrigX, moveOrigY;
+
     // Widgets
     private EditBox hexBox;
     private Button applyButton, resetButton, undoButton, redoButton, gridButton, mirrorButton, upscaleButton, shrinkButton;
-    private Button copyButton, glintButton, sizeDownButton, sizeUpButton, inHandButton;
+    private Button copyButton, glintButton, sizeDownButton, sizeUpButton, inHandButton, gripResetButton;
     private final Map<Tool, Button> toolButtons = new HashMap<>();
     private boolean updatingHex;
 
@@ -134,49 +144,61 @@ public class DesignTableScreen extends AbstractContainerScreen<DesignTableMenu> 
                 .bounds(x + 111, y + 116, 16, 14)
                 .tooltip(Tooltip.create(Component.translatable("gui.toolcanvas.darker"))).build());
 
-        int cx = x + CANVAS_X;
+        // Buttons under the canvas, 4 per row:
+        //   Pen    Eraser  Fill    Pick
+        //   Select Grip    Undo    Redo
+        //   Grid   Mirror  Clear   Original
+        //   Shrink Upscale Hand    Glint
+        //   Size - 100% +  [ Reset grip ]
+        int bx = x + BUTTON_X;
+        int[] rows = new int[5];
+        for (int i = 0; i < rows.length; i++) rows[i] = y + ROW_Y + i * ROW_STEP;
         toolButtons.clear();
         Tool[] tools = Tool.values();
         for (int i = 0; i < tools.length; i++) {
             Tool t = tools[i];
             String key = t.name().toLowerCase(Locale.ROOT);
-            toolButtons.put(t, addRenderableWidget(Button.builder(Component.translatable("gui.toolcanvas.tool." + key), b -> tool = t)
-                    .bounds(cx + i * 40, y + ROW_Y, 39, ROW_H)
+            int row = i < 4 ? 0 : 1, col = i < 4 ? i : i - 4;
+            toolButtons.put(t, addRenderableWidget(Button.builder(Component.translatable("gui.toolcanvas.tool." + key), b -> selectTool(t))
+                    .bounds(bx + col * 40, rows[row], 39, ROW_H)
                     .tooltip(Tooltip.create(Component.translatable("gui.toolcanvas.tool." + key + ".tooltip"))).build()));
         }
-        int r2 = y + ROW_Y + ROW_STEP, r3 = r2 + ROW_STEP, r4 = r3 + ROW_STEP;
         undoButton = addRenderableWidget(Button.builder(Component.translatable("gui.toolcanvas.undo"), b -> undo())
-                .bounds(cx, r2, 39, ROW_H).tooltip(Tooltip.create(Component.literal("Ctrl+Z"))).build());
+                .bounds(bx + 80, rows[1], 39, ROW_H).tooltip(Tooltip.create(Component.literal("Ctrl+Z"))).build());
         redoButton = addRenderableWidget(Button.builder(Component.translatable("gui.toolcanvas.redo"), b -> redo())
-                .bounds(cx + 40, r2, 39, ROW_H).tooltip(Tooltip.create(Component.literal("Ctrl+Y"))).build());
+                .bounds(bx + 120, rows[1], 39, ROW_H).tooltip(Tooltip.create(Component.literal("Ctrl+Y"))).build());
         gridButton = addRenderableWidget(Button.builder(Component.translatable("gui.toolcanvas.grid"), b -> grid = !grid)
-                .bounds(cx + 80, r2, 39, ROW_H).build());
-        mirrorButton = addRenderableWidget(Button.builder(Component.translatable("gui.toolcanvas.mirror"), b -> mirror = !mirror)
-                .bounds(cx + 120, r2, 39, ROW_H)
+                .bounds(bx, rows[2], 39, ROW_H).build());
+        mirrorButton = addRenderableWidget(Button.builder(Component.translatable("gui.toolcanvas.mirror"),
+                        b -> mirror = Mirror.values()[(mirror.ordinal() + 1) % Mirror.values().length])
+                .bounds(bx + 40, rows[2], 39, ROW_H)
                 .tooltip(Tooltip.create(Component.translatable("gui.toolcanvas.mirror.tooltip"))).build());
         addRenderableWidget(Button.builder(Component.translatable("gui.toolcanvas.clear"), b -> clearCanvas())
-                .bounds(cx, r3, 39, ROW_H).build());
+                .bounds(bx + 80, rows[2], 39, ROW_H).build());
         addRenderableWidget(Button.builder(Component.translatable("gui.toolcanvas.original"), b -> loadOriginal())
-                .bounds(cx + 40, r3, 39, ROW_H)
+                .bounds(bx + 120, rows[2], 39, ROW_H)
                 .tooltip(Tooltip.create(Component.translatable("gui.toolcanvas.original.tooltip"))).build());
         shrinkButton = addRenderableWidget(Button.builder(Component.translatable("gui.toolcanvas.shrink"), b -> shrink())
-                .bounds(cx + 80, r3, 39, ROW_H)
+                .bounds(bx, rows[3], 39, ROW_H)
                 .tooltip(Tooltip.create(Component.translatable("gui.toolcanvas.shrink.tooltip"))).build());
         upscaleButton = addRenderableWidget(Button.builder(Component.translatable("gui.toolcanvas.upscale"), b -> upscale(hasShiftDown()))
-                .bounds(cx + 120, r3, 39, ROW_H)
+                .bounds(bx + 40, rows[3], 39, ROW_H)
                 .tooltip(Tooltip.create(Component.translatable("gui.toolcanvas.upscale.tooltip"))).build());
-        sizeDownButton = addRenderableWidget(Button.builder(Component.literal("-"), b -> stepSize(-1))
-                .bounds(cx, r4, 19, ROW_H)
-                .tooltip(Tooltip.create(Component.translatable("gui.toolcanvas.size.tooltip"))).build());
-        sizeUpButton = addRenderableWidget(Button.builder(Component.literal("+"), b -> stepSize(1))
-                .bounds(cx + 60, r4, 19, ROW_H)
-                .tooltip(Tooltip.create(Component.translatable("gui.toolcanvas.size.tooltip"))).build());
         inHandButton = addRenderableWidget(Button.builder(Component.translatable("gui.toolcanvas.in_hand"), b -> toggleInHand())
-                .bounds(cx + 80, r4, 39, ROW_H)
+                .bounds(bx + 80, rows[3], 39, ROW_H)
                 .tooltip(Tooltip.create(Component.translatable("gui.toolcanvas.in_hand.tooltip"))).build());
         glintButton = addRenderableWidget(Button.builder(Component.translatable("gui.toolcanvas.glint"), b -> setGlint(hasShiftDown()))
-                .bounds(cx + 120, r4, 39, ROW_H)
+                .bounds(bx + 120, rows[3], 39, ROW_H)
                 .tooltip(Tooltip.create(Component.translatable("gui.toolcanvas.glint.tooltip"))).build());
+        sizeDownButton = addRenderableWidget(Button.builder(Component.literal("-"), b -> stepSize(-1))
+                .bounds(bx, rows[4], 19, ROW_H)
+                .tooltip(Tooltip.create(Component.translatable("gui.toolcanvas.size.tooltip"))).build());
+        sizeUpButton = addRenderableWidget(Button.builder(Component.literal("+"), b -> stepSize(1))
+                .bounds(bx + 60, rows[4], 19, ROW_H)
+                .tooltip(Tooltip.create(Component.translatable("gui.toolcanvas.size.tooltip"))).build());
+        gripResetButton = addRenderableWidget(Button.builder(Component.translatable("gui.toolcanvas.grip_reset"), b -> setGrip(-1))
+                .bounds(bx + 80, rows[4], 79, ROW_H)
+                .tooltip(Tooltip.create(Component.translatable("gui.toolcanvas.grip_reset.tooltip"))).build());
 
         setColor(color);
         updateButtons();
@@ -190,7 +212,8 @@ public class DesignTableScreen extends AbstractContainerScreen<DesignTableMenu> 
         ItemStack tool = menu.getTool();
         long designId = designId(tool);
         boolean changed = !ItemStack.isSameItem(tool, loadedTool) || designId != loadedDesign
-                || glintOf(tool) != baseGlint || scaleOf(tool) != baseScale || inHandOf(tool) != baseInHand;
+                || glintOf(tool) != baseGlint || scaleOf(tool) != baseScale || inHandOf(tool) != baseInHand
+                || gripOf(tool) != baseGrip;
         if (changed || (waitingForDesign && ClientDesigns.data(designId) != null)) {
             load(tool, designId);
         }
@@ -213,6 +236,10 @@ public class DesignTableScreen extends AbstractContainerScreen<DesignTableMenu> 
         return !stack.isEmpty() && stack.has(ModRegistry.SCALE_IN_HAND.get());
     }
 
+    private static int gripOf(ItemStack stack) {
+        return stack.isEmpty() ? -1 : stack.getOrDefault(ModRegistry.GRIP.get(), -1);
+    }
+
     private static long designId(ItemStack stack) {
         CanvasDesign design = stack.get(ModRegistry.DESIGN.get());
         return design == null ? 0 : design.id();
@@ -225,6 +252,7 @@ public class DesignTableScreen extends AbstractContainerScreen<DesignTableMenu> 
         baseGlint = glintOf(tool);
         baseScale = scaleOf(tool);
         baseInHand = inHandOf(tool);
+        baseGrip = gripOf(tool);
         if (tool.isEmpty()) {
             pixels = null;
             original = null;
@@ -258,6 +286,8 @@ public class DesignTableScreen extends AbstractContainerScreen<DesignTableMenu> 
             pendingGlint = baseGlint;
             pendingScale = baseScale;
             pendingInHand = baseInHand;
+            pendingGrip = baseGrip;
+            clearSelection();
         }
         edited = isDirty();
     }
@@ -282,7 +312,8 @@ public class DesignTableScreen extends AbstractContainerScreen<DesignTableMenu> 
 
     /** Anything Apply would change: pixels, glint colour or size. */
     private boolean isDirty() {
-        return pixels != null && (pixelsDirty() || pendingGlint != baseGlint || pendingScale != baseScale || pendingInHand != baseInHand);
+        return pixels != null && (pixelsDirty() || pendingGlint != baseGlint || pendingScale != baseScale
+                || pendingInHand != baseInHand || pendingGrip != baseGrip);
     }
 
     private boolean matchesOriginal() {
@@ -313,7 +344,7 @@ public class DesignTableScreen extends AbstractContainerScreen<DesignTableMenu> 
         if (artCosts() && !canPay()) return;
         // When the server confirms, the tool's new look becomes the baseline (see load()).
         DesignData design = backToOriginal ? null : DesignData.normalized(cw, ch, pixels);
-        PacketDistributor.sendToServer(new Network.ApplyDesign(menu.containerId, design, pendingGlint, pendingScale, pendingInHand));
+        PacketDistributor.sendToServer(new Network.ApplyDesign(menu.containerId, design, pendingGlint, pendingScale, pendingInHand, pendingGrip));
     }
 
     private void reset() {
@@ -323,7 +354,7 @@ public class DesignTableScreen extends AbstractContainerScreen<DesignTableMenu> 
     }
 
     private boolean hasCustomization() {
-        return loadedDesign != 0 || baseGlint != -1 || baseScale != 100 || baseInHand;
+        return loadedDesign != 0 || baseGlint != -1 || baseScale != 100 || baseInHand || baseGrip != -1;
     }
 
     /** Puts the look of the item in the reference slot on the canvas, with its glint colour and size. */
@@ -339,6 +370,7 @@ public class DesignTableScreen extends AbstractContainerScreen<DesignTableMenu> 
         }
         waitingForCopy = false;
         pushUndo();
+        clearSelection();
         if (design != null) {
             pixels = design.pixels().clone();
             cw = design.width();
@@ -352,6 +384,7 @@ public class DesignTableScreen extends AbstractContainerScreen<DesignTableMenu> 
         pendingGlint = glintOf(reference);
         pendingScale = scaleOf(reference);
         pendingInHand = inHandOf(reference);
+        pendingGrip = gripOf(reference);
         edited = true;
     }
 
@@ -359,6 +392,17 @@ public class DesignTableScreen extends AbstractContainerScreen<DesignTableMenu> 
         if (pixels == null) return;
         pendingGlint = vanilla ? -1 : CanvasRenderTypes.snap(color & 0xFFFFFF);
         edited = true;
+    }
+
+    private void setGrip(int grip) {
+        if (pixels == null) return;
+        pendingGrip = grip;
+        edited = true;
+    }
+
+    private void selectTool(Tool t) {
+        if (t != Tool.SELECT) clearSelection();
+        tool = t;
     }
 
     private void toggleInHand() {
@@ -383,6 +427,7 @@ public class DesignTableScreen extends AbstractContainerScreen<DesignTableMenu> 
         pixels = original.pixels().clone();
         cw = original.width();
         ch = original.height();
+        clearSelection();
         edited = true;
     }
 
@@ -422,6 +467,7 @@ public class DesignTableScreen extends AbstractContainerScreen<DesignTableMenu> 
         pixels = out;
         cw = nw;
         ch = nh;
+        clearSelection();
         edited = true;
     }
 
@@ -451,6 +497,7 @@ public class DesignTableScreen extends AbstractContainerScreen<DesignTableMenu> 
         pixels = out;
         cw = nw;
         ch = nh;
+        clearSelection();
         edited = true;
     }
 
@@ -482,6 +529,7 @@ public class DesignTableScreen extends AbstractContainerScreen<DesignTableMenu> 
     }
 
     private void restore(Snapshot s) {
+        clearSelection();
         pixels = s.pixels();
         cw = s.w();
         ch = s.h();
@@ -510,7 +558,13 @@ public class DesignTableScreen extends AbstractContainerScreen<DesignTableMenu> 
                 : Component.translatable("gui.toolcanvas.glint").append(" ")
                         .append(Component.literal("■").withStyle(st -> st.withColor(pendingGlint))));
         gridButton.setMessage(Component.translatable(grid ? "gui.toolcanvas.grid.on" : "gui.toolcanvas.grid"));
-        mirrorButton.setMessage(Component.translatable(mirror ? "gui.toolcanvas.mirror.on" : "gui.toolcanvas.mirror"));
+        mirrorButton.setMessage(Component.translatable(switch (mirror) {
+            case OFF -> "gui.toolcanvas.mirror";
+            case DIAGONAL -> "gui.toolcanvas.mirror.diagonal";
+            case ANTI_DIAGONAL -> "gui.toolcanvas.mirror.anti_diagonal";
+        }));
+        mirrorButton.active = hasTool && cw == ch;
+        gripResetButton.active = hasTool && pendingGrip != -1;
     }
 
     private Component applyTooltip(boolean dirty) {
@@ -590,10 +644,87 @@ public class DesignTableScreen extends AbstractContainerScreen<DesignTableMenu> 
         return px >= 0 && py >= 0 && px < cw && py < ch ? new int[]{px, py} : null;
     }
 
+    /** The mirror image of a pixel, or null when mirroring is off (or the canvas isn't square). */
+    @Nullable
+    private int[] mirrored(int x, int y) {
+        if (mirror == Mirror.OFF || cw != ch) return null;
+        // "/" runs from the bottom-left to the top-right corner (the way most tools are drawn); "\" the other way.
+        return mirror == Mirror.DIAGONAL ? new int[]{cw - 1 - y, ch - 1 - x} : new int[]{y, x};
+    }
+
     private void plot(int x, int y, int c) {
         if (pixels == null || x < 0 || y < 0 || x >= cw || y >= ch) return;
         pixels[y * cw + x] = c;
-        if (mirror) pixels[y * cw + (cw - 1 - x)] = c;
+        int[] m = mirrored(x, y);
+        if (m != null) pixels[m[1] * cw + m[0]] = c;
+        edited = true;
+    }
+
+    // ---------------------------------------------------------------- selection
+
+    private void clearSelection() {
+        hasSelection = false;
+        selecting = false;
+        floating = null;
+    }
+
+    private boolean inSelection(int x, int y) {
+        return hasSelection && x >= selX && y >= selY && x < selX + selW && y < selY + selH;
+    }
+
+    /** Copies the selected pixels out; unless copying, leaves the area transparent. */
+    private int[] liftSelection(boolean copy) {
+        int[] out = new int[selW * selH];
+        for (int j = 0; j < selH; j++) {
+            for (int i = 0; i < selW; i++) {
+                int index = (selY + j) * cw + selX + i;
+                out[j * selW + i] = pixels[index];
+                if (!copy) pixels[index] = 0;
+            }
+        }
+        return out;
+    }
+
+    /** Pastes pixels with top-left at (x, y); transparent pixels don't erase what's underneath. */
+    private void stamp(int[] buffer, int x, int y, int w, int h) {
+        for (int j = 0; j < h; j++) {
+            for (int i = 0; i < w; i++) {
+                int c = buffer[j * w + i];
+                int px = x + i, py = y + j;
+                if ((c >>> 24) != 0 && px >= 0 && py >= 0 && px < cw && py < ch) pixels[py * cw + px] = c;
+            }
+        }
+        edited = true;
+    }
+
+    /** After a move the box may hang off the canvas; keep only the part that's on it. */
+    private void clipSelection() {
+        int x0 = Math.max(0, selX), y0 = Math.max(0, selY);
+        int x1 = Math.min(cw, selX + selW), y1 = Math.min(ch, selY + selH);
+        if (x1 <= x0 || y1 <= y0) {
+            hasSelection = false;
+            return;
+        }
+        selX = x0;
+        selY = y0;
+        selW = x1 - x0;
+        selH = y1 - y0;
+    }
+
+    private void nudgeSelection(int dx, int dy) {
+        if (!hasSelection || pixels == null) return;
+        pushUndo();
+        int[] buffer = liftSelection(hasControlDown() || hasAltDown());
+        stamp(buffer, selX + dx, selY + dy, selW, selH);
+        selX += dx;
+        selY += dy;
+        clipSelection();
+    }
+
+    private void deleteSelection() {
+        if (!hasSelection || pixels == null) return;
+        pushUndo();
+        liftSelection(false);
         edited = true;
     }
 
@@ -642,11 +773,42 @@ public class DesignTableScreen extends AbstractContainerScreen<DesignTableMenu> 
                 if (tool == Tool.PICKER) tool = Tool.PEN;
                 return true;
             }
+            if (tool == Tool.GRIP) {
+                if (button == 1) {
+                    setGrip(-1);
+                } else {
+                    int u = Math.round((p[0] + 0.5F) * 1000F / cw), v = Math.round((p[1] + 0.5F) * 1000F / ch);
+                    setGrip((u << 16) | v);
+                }
+                return true;
+            }
+            if (tool == Tool.SELECT) {
+                if (button == 1) {
+                    clearSelection();
+                } else if (inSelection(p[0], p[1])) {
+                    // Drag the selected pixels; Ctrl/Alt leaves the originals in place (copy).
+                    pushUndo();
+                    floating = liftSelection(hasControlDown() || hasAltDown());
+                    moveOrigX = floatX = selX;
+                    moveOrigY = floatY = selY;
+                    moveGrabX = p[0];
+                    moveGrabY = p[1];
+                } else {
+                    hasSelection = true;
+                    selecting = true;
+                    selAnchorX = selX = p[0];
+                    selAnchorY = selY = p[1];
+                    selW = selH = 1;
+                }
+                return true;
+            }
             pushUndo();
             boolean erase = button == 1 || tool == Tool.ERASER;
             int c = erase ? 0 : color;
             if (tool == Tool.FILL) {
                 floodFill(p[0], p[1], c);
+                int[] m = mirrored(p[0], p[1]);
+                if (m != null) floodFill(m[0], m[1], c);
             } else {
                 painting = true;
                 paintErase = erase;
@@ -668,6 +830,23 @@ public class DesignTableScreen extends AbstractContainerScreen<DesignTableMenu> 
 
     @Override
     public boolean mouseDragged(double mx, double my, int button, double dx, double dy) {
+        if (selecting || floating != null) {
+            int s = scale();
+            int px = (int) Math.floor((mx - canvasLeft()) / s);
+            int py = (int) Math.floor((my - canvasTop()) / s);
+            if (selecting) {
+                px = Math.clamp(px, 0, cw - 1);
+                py = Math.clamp(py, 0, ch - 1);
+                selX = Math.min(px, selAnchorX);
+                selY = Math.min(py, selAnchorY);
+                selW = Math.abs(px - selAnchorX) + 1;
+                selH = Math.abs(py - selAnchorY) + 1;
+            } else {
+                floatX = moveOrigX + px - moveGrabX;
+                floatY = moveOrigY + py - moveGrabY;
+            }
+            return true;
+        }
         if (painting) {
             int s = scale();
             int px = Math.clamp((int) Math.floor((mx - canvasLeft()) / s), 0, cw - 1);
@@ -682,6 +861,18 @@ public class DesignTableScreen extends AbstractContainerScreen<DesignTableMenu> 
 
     @Override
     public boolean mouseReleased(double mx, double my, int button) {
+        if (selecting) {
+            selecting = false;
+            return true;
+        }
+        if (floating != null) {
+            stamp(floating, floatX, floatY, selW, selH);
+            selX = floatX;
+            selY = floatY;
+            floating = null;
+            clipSelection();
+            return true;
+        }
         if (painting) {
             painting = false;
             return true;
@@ -700,6 +891,17 @@ public class DesignTableScreen extends AbstractContainerScreen<DesignTableMenu> 
             }
             hexBox.keyPressed(key, scan, modifiers);
             return true; // don't let 'E' etc. close the screen while typing
+        }
+        if (hasSelection && floating == null) {
+            switch (key) {
+                case GLFW.GLFW_KEY_ESCAPE -> { clearSelection(); return true; }
+                case GLFW.GLFW_KEY_DELETE, GLFW.GLFW_KEY_BACKSPACE -> { deleteSelection(); return true; }
+                case GLFW.GLFW_KEY_LEFT -> { nudgeSelection(-1, 0); return true; }
+                case GLFW.GLFW_KEY_RIGHT -> { nudgeSelection(1, 0); return true; }
+                case GLFW.GLFW_KEY_UP -> { nudgeSelection(0, -1); return true; }
+                case GLFW.GLFW_KEY_DOWN -> { nudgeSelection(0, 1); return true; }
+                default -> { }
+            }
         }
         if (hasControlDown() && key == GLFW.GLFW_KEY_Z) {
             if (hasShiftDown()) redo(); else undo();
@@ -808,18 +1010,51 @@ public class DesignTableScreen extends AbstractContainerScreen<DesignTableMenu> 
                 if ((c >>> 24) != 0) g.fill(x0, y0, x0 + s, y0 + s, c);
             }
         }
+        if (floating != null) {
+            for (int j = 0; j < selH; j++) {
+                for (int i = 0; i < selW; i++) {
+                    int c = floating[j * selW + i];
+                    int px = floatX + i, py = floatY + j;
+                    if ((c >>> 24) != 0 && px >= 0 && py >= 0 && px < cw && py < ch) {
+                        g.fill(ox + px * s, oy + py * s, ox + px * s + s, oy + py * s + s, c);
+                    }
+                }
+            }
+        }
         if (grid && s >= 4) {
             for (int i = 1; i < cw; i++) g.fill(ox + i * s, oy, ox + i * s + 1, oy + ch * s, 0x33000000);
             for (int i = 1; i < ch; i++) g.fill(ox, oy + i * s, ox + cw * s, oy + i * s + 1, 0x33000000);
         }
         int[] hover = pixelAt(mx, my);
-        if (hover != null) {
+        if (hover != null && tool != Tool.SELECT) {
             outline(g, ox + hover[0] * s, oy + hover[1] * s, s, s, 0xCCFFFFFF);
-            if (mirror) outline(g, ox + (cw - 1 - hover[0]) * s, oy + hover[1] * s, s, s, 0x66FFFFFF);
+            int[] m = mirrored(hover[0], hover[1]);
+            if (m != null && tool != Tool.GRIP && tool != Tool.PICKER) outline(g, ox + m[0] * s, oy + m[1] * s, s, s, 0x66FFFFFF);
         }
-        if (mirror) {
-            int mid = ox + cw * s / 2;
-            g.fill(mid, oy, mid + 1, oy + ch * s, 0x55FF4040);
+        if (mirror != Mirror.OFF && cw == ch) {
+            int span = cw * s;
+            for (int i = 0; i < span; i++) {
+                int yy = mirror == Mirror.DIAGONAL ? oy + span - 1 - i : oy + i;
+                g.fill(ox + i, yy, ox + i + 1, yy + 1, 0x99FF4040);
+            }
+        }
+        if (hasSelection) {
+            int sx = floating != null ? floatX : selX, sy = floating != null ? floatY : selY;
+            marchingAnts(g, ox + sx * s, oy + sy * s, selW * s, selH * s);
+        }
+        // Grip: where the hand holds by default (cyan) and the chosen grip pixel (gold crosshair).
+        if (tool == Tool.GRIP) {
+            int dx = Math.min(cw - 1, ModRegistry.DEFAULT_GRIP_U * cw / 1000);
+            int dy = Math.min(ch - 1, ModRegistry.DEFAULT_GRIP_V * ch / 1000);
+            outline(g, ox + dx * s - 1, oy + dy * s - 1, s + 2, s + 2, 0xCC40E0FF);
+        }
+        if (pendingGrip >= 0) {
+            int gx = Math.min(cw - 1, (pendingGrip >>> 16) * cw / 1000);
+            int gy = Math.min(ch - 1, (pendingGrip & 0xFFFF) * ch / 1000);
+            int cx0 = ox + gx * s + s / 2, cy0 = oy + gy * s + s / 2;
+            outline(g, ox + gx * s - 1, oy + gy * s - 1, s + 2, s + 2, 0xFFFFC020);
+            g.fill(cx0 - s, cy0, cx0 + s + 1, cy0 + 1, 0xFFFFC020);
+            g.fill(cx0, cy0 - s, cx0 + 1, cy0 + s + 1, 0xFFFFC020);
         }
     }
 
@@ -834,7 +1069,7 @@ public class DesignTableScreen extends AbstractContainerScreen<DesignTableMenu> 
 
         if (pixels != null) {
             String size = Component.translatable("gui.toolcanvas.size", pendingScale).getString();
-            g.drawString(font, size, CANVAS_X + 40 - font.width(size) / 2, ROW_Y + 3 * ROW_STEP + 3, 0x404040, false);
+            g.drawString(font, size, BUTTON_X + 40 - font.width(size) / 2, ROW_Y + 4 * ROW_STEP + 3, 0x404040, false);
         }
 
         ItemStack tool = menu.getTool();
@@ -895,6 +1130,20 @@ public class DesignTableScreen extends AbstractContainerScreen<DesignTableMenu> 
                 int c = (((cx + cy) / cell) & 1) == 0 ? 0xFFC8C8C8 : 0xFF9C9C9C;
                 g.fill(x + cx, y + cy, x + Math.min(w, cx + cell), y + Math.min(h, cy + cell), c);
             }
+        }
+    }
+
+    /** Animated black/white dashed rectangle. */
+    private static void marchingAnts(GuiGraphics g, int x, int y, int w, int h) {
+        int t = (int) (System.currentTimeMillis() / 120);
+        int perimeter = 2 * (w + h);
+        for (int i = 0; i < perimeter; i++) {
+            int px, py;
+            if (i < w) { px = x + i; py = y; }
+            else if (i < w + h) { px = x + w - 1; py = y + i - w; }
+            else if (i < 2 * w + h) { px = x + w - 1 - (i - w - h); py = y + h - 1; }
+            else { px = x; py = y + h - 1 - (i - 2 * w - h); }
+            g.fill(px, py, px + 1, py + 1, (((i + t) / 3) & 1) == 0 ? 0xFFFFFFFF : 0xFF000000);
         }
     }
 

@@ -61,6 +61,23 @@ public final class ModRegistry {
     public static final DeferredHolder<DataComponentType<?>, DataComponentType<Boolean>> SCALE_IN_HAND = COMPONENTS.registerComponentType("scale_in_hand",
             builder -> builder.persistent(Codec.BOOL).networkSynchronized(ByteBufCodecs.BOOL));
 
+    /**
+     * Where the hand holds the tool, as (u << 16) | v in thousandths of the texture width/height (from the top-left).
+     * Absent = wherever the tool's model normally puts the hand.
+     */
+    public static final DeferredHolder<DataComponentType<?>, DataComponentType<Integer>> GRIP = COMPONENTS.registerComponentType("grip",
+            builder -> builder.persistent(Codec.intRange(0, (1000 << 16) | 1000)).networkSynchronized(ByteBufCodecs.VAR_INT));
+
+    /**
+     * The texture point vanilla's held-item pose (item/handheld, third person) puts in the hand: just below the
+     * guard on a sword. Worked out from the handheld transform (rotation 0,-90,55, translation 0,4,0.5, scale 0.85).
+     */
+    public static final int DEFAULT_GRIP_U = 238, DEFAULT_GRIP_V = 639;
+
+    public static boolean validGrip(int grip) {
+        return grip >= 0 && (grip >>> 16) <= 1000 && (grip & 0xFFFF) <= 1000;
+    }
+
     private ModRegistry() {}
 
     static void register(IEventBus modBus) {

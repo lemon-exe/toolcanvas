@@ -11,7 +11,12 @@ Repaint any tool or melee weapon, vanilla or modded, **one item at a time**, in-
    Plank  ·      Plank       Craft = crafting table
    ```
 2. Put a tool in the top slot. The canvas loads the tool's current look (custom or original).
-3. Draw. Tools: Pen, Eraser, Fill, Pick, Undo/Redo (Ctrl+Z / Ctrl+Y), Mirror, Grid, Clear, Original.
+3. Draw. Tools: Pen, Eraser, Fill, Pick, Select, Grip, Undo/Redo (Ctrl+Z / Ctrl+Y), Mirror, Grid, Clear, Original.
+   - **Select**: drag a box, then drag inside it to move the pixels (hold Ctrl/Alt to copy). Arrow keys nudge,
+     Delete clears, Esc or right-click deselects.
+   - **Mirror**: cycles off → `/` (the bottom-left to top-right line most tools are drawn along) → `\`.
+   - **Grip**: click the pixel the hand should hold; the held tool shifts so that pixel sits in the hand.
+     The cyan box marks where the hand holds by default. **Default grip** removes it. Free.
    **Upscale** doubles the resolution (16×16 → 32×32 → 64×64) keeping your drawing; Shift+click for a smooth
    (Scale2x) upscale. **Shrink** halves it.
    Left-click paints, right-click erases, middle-click picks a colour. The top palette row is made of

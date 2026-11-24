@@ -48,7 +48,8 @@ public final class Network {
      * {@code design == null} means "the tool's original texture"; {@code glint == -1} means vanilla glint;
      * {@code scale} is a percentage (100 = normal size).
      */
-    public record ApplyDesign(int containerId, @Nullable DesignData design, int glint, int scale, boolean scaleInHand) implements CustomPacketPayload {
+    public record ApplyDesign(int containerId, @Nullable DesignData design, int glint, int scale, boolean scaleInHand, int grip)
+            implements CustomPacketPayload {
         public static final Type<ApplyDesign> TYPE = new Type<>(ToolCanvas.id("apply_design"));
         public static final StreamCodec<FriendlyByteBuf, ApplyDesign> STREAM_CODEC = StreamCodec.of(
                 (buf, p) -> {
@@ -58,10 +59,11 @@ public final class Network {
                     buf.writeInt(p.glint);
                     buf.writeVarInt(p.scale);
                     buf.writeBoolean(p.scaleInHand);
+                    buf.writeInt(p.grip);
                 },
                 buf -> new ApplyDesign(buf.readVarInt(),
                         buf.readBoolean() ? DesignData.STREAM_CODEC.decode(buf) : null,
-                        buf.readInt(), buf.readVarInt(), buf.readBoolean()));
+                        buf.readInt(), buf.readVarInt(), buf.readBoolean(), buf.readInt()));
 
         @Override
         public Type<ApplyDesign> type() {
@@ -145,6 +147,7 @@ public final class Network {
         if (!CanvasRules.isCustomizable(tool)) return;
         if (payload.glint() < -1 || payload.glint() > 0xFFFFFF) return;
         if (payload.scale() < ModRegistry.MIN_SCALE || payload.scale() > ModRegistry.MAX_SCALE) return;
+        if (payload.grip() != -1 && !ModRegistry.validGrip(payload.grip())) return;
 
         DesignData design = null;
         long newId = 0;
@@ -161,10 +164,11 @@ public final class Network {
         int currentGlint = tool.getOrDefault(ModRegistry.GLINT.get(), -1);
         int currentScale = tool.getOrDefault(ModRegistry.SCALE.get(), 100);
         boolean currentInHand = tool.has(ModRegistry.SCALE_IN_HAND.get());
+        int currentGrip = tool.getOrDefault(ModRegistry.GRIP.get(), -1);
 
         boolean artChanged = newId != currentId;
         if (!artChanged && payload.glint() == currentGlint && payload.scale() == currentScale
-                && payload.scaleInHand() == currentInHand) return;
+                && payload.scaleInHand() == currentInHand && payload.grip() == currentGrip) return;
 
         // Only new pixel art costs material. Going back to the original texture, glint and size are free.
         boolean pays = artChanged && newId != 0 && CanvasRules.paysCost(player);
@@ -186,6 +190,8 @@ public final class Network {
         else tool.remove(ModRegistry.SCALE.get());
         if (payload.scaleInHand()) tool.set(ModRegistry.SCALE_IN_HAND.get(), true);
         else tool.remove(ModRegistry.SCALE_IN_HAND.get());
+        if (payload.grip() >= 0) tool.set(ModRegistry.GRIP.get(), payload.grip());
+        else tool.remove(ModRegistry.GRIP.get());
         if (pays) material.shrink(1);
         menu.markChanged();
 
@@ -202,11 +208,12 @@ public final class Network {
         ItemStack tool = menu.getTool();
         if (tool.isEmpty()) return;
         if (!tool.has(ModRegistry.DESIGN.get()) && !tool.has(ModRegistry.GLINT.get()) && !tool.has(ModRegistry.SCALE.get())
-                && !tool.has(ModRegistry.SCALE_IN_HAND.get())) return;
+                && !tool.has(ModRegistry.SCALE_IN_HAND.get()) && !tool.has(ModRegistry.GRIP.get())) return;
         tool.remove(ModRegistry.DESIGN.get());
         tool.remove(ModRegistry.GLINT.get());
         tool.remove(ModRegistry.SCALE.get());
         tool.remove(ModRegistry.SCALE_IN_HAND.get());
+        tool.remove(ModRegistry.GRIP.get());
         menu.markChanged();
         player.level().playSound(null, player.blockPosition(), SoundEvents.UI_CARTOGRAPHY_TABLE_TAKE_RESULT, SoundSource.BLOCKS, 1.0F, 1.0F);
     }

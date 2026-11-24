@@ -45,6 +45,14 @@ public abstract class ItemRendererMixin {
                 poseStack.scale(f, f, f);
             }
         }
+        // Grip point: slide the model (in its own frame) so the chosen pixel sits where the hand normally holds.
+        if (held) {
+            Integer grip = stack.get(ModRegistry.GRIP.get());
+            if (grip != null) {
+                int u = grip >>> 16, v = grip & 0xFFFF;
+                poseStack.translate((ModRegistry.DEFAULT_GRIP_U - u) / 1000F, (v - ModRegistry.DEFAULT_GRIP_V) / 1000F, 0F);
+            }
+        }
         return result;
     }
 

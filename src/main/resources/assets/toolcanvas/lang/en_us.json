@@ -20,7 +20,7 @@
   "gui.toolcanvas.apply.free_reset": "This is the tool's original look; applying resets it for free.",
   "gui.toolcanvas.apply.need_material": "Needs 1× %s in the payment slot.",
   "gui.toolcanvas.reset": "Reset",
-  "gui.toolcanvas.reset.tooltip": "Put this tool back to its original look, glint and size. Free.",
+  "gui.toolcanvas.reset.tooltip": "Put this tool back to its original look, glint, size and grip. Free.",
   "gui.toolcanvas.hex": "Colour (#RRGGBB or #AARRGGBB)",
   "gui.toolcanvas.lighter": "Lighter",
   "gui.toolcanvas.darker": "Darker",
@@ -37,8 +37,7 @@
   "gui.toolcanvas.grid": "Grid",
   "gui.toolcanvas.grid.on": "Grid ✔",
   "gui.toolcanvas.mirror": "Mirror",
-  "gui.toolcanvas.mirror.on": "Mirror ✔",
-  "gui.toolcanvas.mirror.tooltip": "Paint symmetrically across the vertical centre line.",
+  "gui.toolcanvas.mirror.tooltip": "Click to cycle: off → / (bottom-left to top-right, the line most tools are drawn along) → \\.\nPen, eraser and fill are mirrored across the red line. Square canvases only.",
   "gui.toolcanvas.clear": "Clear",
   "gui.toolcanvas.original": "Original",
   "gui.toolcanvas.original.tooltip": "Load the tool's original texture onto the canvas (nothing is applied until you press Apply).",
@@ -59,5 +58,13 @@
   "gui.toolcanvas.size.tooltip": "How big the tool looks on displays, in item frames and when dropped (and in hand if \"Hand\" is on). Inventory icons stay normal. Free.",
   "gui.toolcanvas.in_hand": "Hand",
   "gui.toolcanvas.in_hand.on": "Hand ✔",
-  "gui.toolcanvas.in_hand.tooltip": "Off: Size only applies on displays, in item frames and when dropped.\nOn: the tool is also scaled when held. Free."
+  "gui.toolcanvas.in_hand.tooltip": "Off: Size only applies on displays, in item frames and when dropped.\nOn: the tool is also scaled when held. Free.",
+  "gui.toolcanvas.tool.select": "Select",
+  "gui.toolcanvas.tool.select.tooltip": "Drag a box to select pixels, then drag inside it to move them.\nHold Ctrl or Alt while dragging to copy instead.\nArrow keys nudge, Delete clears, Esc or right-click deselects.",
+  "gui.toolcanvas.tool.grip": "Grip",
+  "gui.toolcanvas.tool.grip.tooltip": "Click the pixel the hand should hold (gold marker). The cyan box shows where the hand holds by default.\nRight-click removes the grip. Free.",
+  "gui.toolcanvas.grip_reset": "Default grip",
+  "gui.toolcanvas.grip_reset.tooltip": "Hold the tool wherever its model normally puts the hand.",
+  "gui.toolcanvas.mirror.diagonal": "Mirror /",
+  "gui.toolcanvas.mirror.anti_diagonal": "Mirror \\"
 }
